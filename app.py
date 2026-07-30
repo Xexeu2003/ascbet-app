@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, date, timedelta
 
 st.set_page_config(page_title="Relatório ASCbet 70%+", layout="wide")
 st.title("⚽ Relatório Automático ASCbet 70%+")
@@ -12,20 +11,14 @@ CAMPEONATOS_FAVORITOS = {
     71: "Brasil - Serie A", 256: "USA - MLS"
 }
 
-# BANCO DE DADOS FALSO
+# BANCO DE DADOS FALSO COM PROBABILIDADES JÁ
 JOGOS_DEMO = [
-    {"fixture_id": 1, "league_id": 256, "data": "30/07 20:00", "jogo": "LA Galaxy x Inter Miami", "status": "A Começar"},
-    {"fixture_id": 2, "league_id": 256, "data": "31/07 22:30", "jogo": "NYCFC x Atlanta United", "status": "A Começar"},
-    {"fixture_id": 3, "league_id": 71, "data": "31/07 19:00", "jogo": "Flamengo x Palmeiras", "status": "A Começar"},
-    {"fixture_id": 4, "league_id": 71, "data": "03/08 16:00", "jogo": "Corinthians x São Paulo", "status": "A Começar"},
-    {"fixture_id": 5, "league_id": 106, "data": "01/08 15:00", "jogo": "Bodo/Glimt x Rosenborg", "status": "A Começar"},
+    {"fixture_id": 1, "league_id": 256, "data": "30/07 20:00", "jogo": "LA Galaxy x Inter Miami", "status": "A Começar", "probs": {"Over 1.5": 88, "BTTS": 75, "Over 2.5": 69}},
+    {"fixture_id": 2, "league_id": 256, "data": "31/07 22:30", "jogo": "NYCFC x Atlanta United", "status": "A Começar", "probs": {"Over 1.5": 65, "BTTS": 58, "Over 2.5": 42}},
+    {"fixture_id": 3, "league_id": 71, "data": "31/07 19:00", "jogo": "Flamengo x Palmeiras", "status": "A Começar", "probs": {"Over 1.5": 91, "BTTS": 82, "Over 3.5": 71}},
+    {"fixture_id": 4, "league_id": 71, "data": "03/08 16:00", "jogo": "Corinthians x São Paulo", "status": "A Começar", "probs": {"Over 1.5": 68, "BTTS": 61, "Over 2.5": 55}},
+    {"fixture_id": 5, "league_id": 106, "data": "01/08 15:00", "jogo": "Bodo/Glimt x Rosenborg", "status": "A Começar", "probs": {"Over 1.5": 85, "BTTS": 79, "Over 2.5": 72}},
 ]
-
-def calcular_probabilidades(fixture_id):
-    # SIMULAÇÃO REALISTA
-    if fixture_id == 1: return {"Over 1.5": 88, "BTTS": 75, "Over 2.5": 69}
-    if fixture_id == 3: return {"Over 1.5": 91, "BTTS": 82, "Over 3.5": 71}
-    return {"Over 1.5": 65, "BTTS": 58, "Over 2.5": 42}
 
 tab1, tab2 = st.tabs(["📌 Meus Campeonatos", "🔍 Buscar Campeonato"])
 league_id_final = None
@@ -50,29 +43,14 @@ if st.button("Gerar Relatório 70%+", type="primary"):
         
         if jogos:
             st.success(f"{len(jogos)} jogos encontrados!")
-            df = pd.DataFrame(jogos)
             
-            evento = st.dataframe(
-                df[["data", "jogo", "status"]],
-                use_container_width=True,
-                hide_index=True,
-                on_select="rerun",
-                selection_mode="single-row"
-            )
-            
-            if evento.selection.rows:
-                linha_clicada = evento.selection.rows[0]
-                fixture_id = df.iloc[linha_clicada]["fixture_id"]
-                jogo_nome = df.iloc[linha_clicada]["jogo"]
-                
+            for jogo in jogos:
                 st.divider()
-                st.subheader(f"📊 Análise: {jogo_nome}")
-                
-                probs = calcular_probabilidades(fixture_id)
+                st.subheader(f"📊 {jogo['jogo']} - {jogo['data']}")
                 
                 st.write("### Palpites 70%+")
                 achou = False
-                for mercado, valor in probs.items():
+                for mercado, valor in jogo["probs"].items():
                     if valor >= 70:
                         st.success(f"**{mercado}: {valor}%**")
                         achou = True
