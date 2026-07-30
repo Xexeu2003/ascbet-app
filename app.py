@@ -48,7 +48,7 @@ if st.button("Gerar Relatório 70%+", type="primary"):
                 st.divider()
                 st.subheader(f"📊 {jogo['jogo']} - {jogo['data']}")
                 
-                st.write("### Palpites 70%+")
+                st.write("### Probabilidades 70%+") # AQUI MUDOU
                 achou = False
                 for mercado, valor in jogo["probs"].items():
                     if valor >= 70:
@@ -56,7 +56,7 @@ if st.button("Gerar Relatório 70%+", type="primary"):
                         achou = True
                 
                 if not achou:
-                    st.info("Nenhum mercado acima de 70% nesse jogo.")
+                    st.info("Nenhuma probabilidade acima de 70% nesse jogo.")
         else:
             st.warning("Nenhum jogo de DEMO para esse campeonato.")
 
