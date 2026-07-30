@@ -5,16 +5,13 @@ from datetime import datetime
 
 st.set_page_config(page_title="Relatório ASCbet 70%+", layout="wide")
 st.title("⚽ Relatório Automático ASCbet 70%+")
-st.caption("Dados via API-Football")
 
-# 1. PEGA A CHAVE DOS SECRETS
 try:
     API_KEY = st.secrets["API_KEY"]
 except KeyError:
     st.error("Chave API_KEY não encontrada nos Secrets.")
     st.stop()
 
-# 2. FUNÇÃO PARA BUSCAR CAMPEONATOS
 @st.cache_data(ttl=3600)
 def buscar_campeonatos():
     url = "https://v3.football.api-sports.io/leagues"
@@ -23,31 +20,42 @@ def buscar_campeonatos():
     try:
         response = requests.get(url, headers=headers, timeout=15)
         response.raise_for_status()
-        return response.json()["response"]
+        dados = response.json()
+        
+        # DEBUG: Mostra se deu erro na API
+        if dados.get("errors"):
+            st.error(f"Erro da API: {dados['errors']}")
+            return None
+            
+        return dados["response"]
     except Exception as e:
-        st.error(f"Erro ao conectar na API: {e}")
+        st.error(f"Erro ao conectar: {e}")
         return None
 
-# 3. BOTÃO
 if st.button("Buscar Campeonatos"):
     with st.spinner("Buscando dados da API..."):
         dados = buscar_campeonatos()
     
     if dados:
-        st.success(f"{len(dados)} campeonatos encontrados!")
-        
-        # FILTRA SÓ OS PRINCIPAIS
+        # FILTRA SÓ TEMPORADA 2025/2026 E PAÍSES PRINCIPAIS
         lista = []
+        paises_top = ["Brazil", "England", "Spain", "Germany", "Italy", "France", "Portugal"]
+        
         for x in dados:
-            lista.append({
-                "ID": x["league"]["id"],
-                "Campeonato": x["league"]["name"],
-                "País": x["country"]["name"],
-                "Temporada": x["seasons"][-1]["year"] if x["seasons"] else ""
-            })
+            temporada_atual = x["seasons"][-1]["year"] if x["seasons"] else 0
+            pais = x["country"]["name"]
+            
+            if temporada_atual >= 2024 and pais in paises_top:
+                lista.append({
+                    "ID": x["league"]["id"],
+                    "Campeonato": x["league"]["name"],
+                    "País": pais,
+                    "Temporada": temporada_atual
+                })
         
-        df = pd.DataFrame(lista)
-        df = df.sort_values("País")
-        st.dataframe(df, use_container_width=True, height=500)
-        
-        st.write("Última atualização:", datetime.now().strftime("%d/%m/%Y %H:%M"))
+        if len(lista) == 0:
+            st.warning("Nenhum campeonato encontrado. Verifique sua chave.")
+        else:
+            st.success(f"{len(lista)} campeonatos encontrados!")
+            df = pd.DataFrame(lista)
+            st.dataframe(df, use_container_width=True)
