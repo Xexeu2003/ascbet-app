@@ -4,38 +4,31 @@ import pandas as pd
 from datetime import datetime
 
 st.set_page_config(page_title="Relatório ASCbet 70%+", layout="wide")
+st.title("⚽ Relatório Automático ASCbet 70%+")
+st.caption("Dados via API-Football")
 
-st.title("Relatório Automático ASCbet 70%+")
-st.write("App conectado na API de Futebol")
-
-# PEGA A CHAVE DOS SECRETS
+# 1. PEGA A CHAVE DOS SECRETS
 try:
     API_KEY = st.secrets["API_KEY"]
 except KeyError:
-    st.error("Chave API_KEY não encontrada nos Secrets. \n\n Vá em Settings > Secrets e adicione: \n API_KEY = \"sua_chave\"")
+    st.error("Chave API_KEY não encontrada nos Secrets.")
     st.stop()
 
-# FUNÇÃO PARA BUSCAR CAMPEONATOS - URL CORRIGIDA
+# 2. FUNÇÃO PARA BUSCAR CAMPEONATOS
 @st.cache_data(ttl=3600)
 def buscar_campeonatos():
-    url = "https://api.api-futebol.com/v1/campeonatos"  # <-- CORRIGIDO SEM .BR
-    headers = {"Authorization": f"Bearer {API_KEY}"}
+    url = "https://v3.football.api-sports.io/leagues"
+    headers = {"x-apisports-key": API_KEY}
     
     try:
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, timeout=15)
         response.raise_for_status()
-        return response.json()
-    except requests.exceptions.HTTPError as e:
-        if response.status_code == 401:
-            st.error(f"Erro 401: Chave inválida. Verifique se a chave {API_KEY[:5]}... está ativa em api.api-futebol.com")
-        else:
-            st.error(f"Erro HTTP {response.status_code}: {e}")
-        return None
+        return response.json()["response"]
     except Exception as e:
         st.error(f"Erro ao conectar na API: {e}")
         return None
 
-# BOTÃO
+# 3. BOTÃO
 if st.button("Buscar Campeonatos"):
     with st.spinner("Buscando dados da API..."):
         dados = buscar_campeonatos()
@@ -43,10 +36,18 @@ if st.button("Buscar Campeonatos"):
     if dados:
         st.success(f"{len(dados)} campeonatos encontrados!")
         
-        # MOSTRA EM TABELA
-        df = pd.DataFrame(dados)
-        colunas = ['campeonato_id', 'nome', 'nome_popular', 'slug']
-        df = df[[c for c in colunas if c in df.columns]]
-        st.dataframe(df, use_container_width=True)
+        # FILTRA SÓ OS PRINCIPAIS
+        lista = []
+        for x in dados:
+            lista.append({
+                "ID": x["league"]["id"],
+                "Campeonato": x["league"]["name"],
+                "País": x["country"]["name"],
+                "Temporada": x["seasons"][-1]["year"] if x["seasons"] else ""
+            })
+        
+        df = pd.DataFrame(lista)
+        df = df.sort_values("País")
+        st.dataframe(df, use_container_width=True, height=500)
         
         st.write("Última atualização:", datetime.now().strftime("%d/%m/%Y %H:%M"))
