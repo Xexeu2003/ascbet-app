@@ -5,11 +5,10 @@ from datetime import datetime, date, timedelta
 
 st.set_page_config(page_title="Relatório ASCbet 70%+", layout="wide")
 st.title("⚽ Relatório Automático ASCbet 70%+")
-st.caption("Horário: Manaus -4 | Puxa: 7 Dias | Clique no jogo para ver as probabilidades")
+st.caption("Horário: Manaus -4 | Puxa: Próximos 10 jogos | Clique no jogo para ver as probabilidades")
 
 API_KEY = st.secrets["API_KEY"]
 
-# SUA LISTA DE CAMPEONATOS
 CAMPEONATOS_FAVORITOS = {
     39: "Inglaterra - Premier League", 40: "Inglaterra - Championship", 140: "Espanha - La Liga",
     78: "Alemanha - Bundesliga", 135: "Italia - Serie A", 94: "França - Ligue 1",
@@ -21,20 +20,12 @@ CAMPEONATOS_FAVORITOS = {
 }
 
 @st.cache_data(ttl=600)
-def buscar_jogos_7_dias():
-    hoje = date.today()
-    datas = [(hoje + timedelta(days=i)).isoformat() for i in range(-3, 4)] # 3 antes, hoje, 3 depois
-    
-    todos_jogos = []
-    for d in datas:
-        url = f"https://v3.football.api-sports.io/fixtures?date={d}"
-        headers = {"x-apisports-key": API_KEY}
-        try:
-            response = requests.get(url, headers=headers, timeout=15)
-            todos_jogos.extend(response.json().get("response", []))
-        except:
-            pass
-    return todos_jogos
+def buscar_jogos_por_liga(league_id):
+    # PUXA DIRETO PELA LIGA - FUNCIONA MELHOR NA API FREE
+    url = f"https://v3.football.api-sports.io/fixtures?league={league_id}&season=2026&next=10"
+    headers = {"x-apisports-key": API_KEY}
+    response = requests.get(url, headers=headers, timeout=15)
+    return response.json().get("response", [])
 
 def converter_horario(utc_str):
     utc_time = datetime.fromisoformat(utc_str.replace("Z", ""))
@@ -42,11 +33,11 @@ def converter_horario(utc_str):
 
 def traduzir_status(codigo):
     status_dict = {"NS": "A Começar","1H": "1º Tempo","HT": "Intervalo","2H": "2º Tempo",
-                   "FT": "Finalizado","PST": "Adiado","CANC": "Cancelado","ABD": "Abandonado"}
+                   "FT": "Finalizado","PST": "Adiado","CANC": "Cancelado"}
     return status_dict.get(codigo, codigo)
 
 def calcular_probabilidades(fixture_id):
-    # FAKE por enquanto. Depois trocamos pela API de estatísticas
+    # FAKE por enquanto
     return {"Over 1.5": 82, "Over 2.5": 68, "BTTS": 75, "Over 3.5": 41}
 
 tab1, tab2 = st.tabs(["📌 Meus Campeonatos", "🔍 Buscar Campeonato"])
@@ -63,19 +54,16 @@ with tab2:
         if resultados:
             campeonato_busca = st.selectbox("Resultado:", options=sorted(list(resultados.values())), key="select2")
             league_id_final = [k for k, v in resultados.items() if v == campeonato_busca][0]
-        else:
-            st.info("Digite para filtrar sua lista.")
 
 if st.button("Gerar Relatório 70%+", type="primary"):
     if league_id_final is None:
         st.error("Selecione um campeonato primeiro.")
     else:
-        with st.spinner("Buscando jogos dos últimos 7 dias..."):
-            jogos = buscar_jogos_7_dias()
-            jogos_filtrados = [j for j in jogos if j["league"]["id"] == league_id_final]
+        with st.spinner("Buscando próximos 10 jogos da liga..."):
+            jogos = buscar_jogos_por_liga(league_id_final)
             
             relatorio = []
-            for jogo in jogos_filtrados:
+            for jogo in jogos:
                 relatorio.append({
                     "fixture_id": jogo["fixture"]["id"],
                     "Data/Hora Manaus": converter_horario(jogo["fixture"]["date"]),
@@ -115,4 +103,4 @@ if st.button("Gerar Relatório 70%+", type="primary"):
                     if not achou:
                         st.warning("Nenhum mercado acima de 70% nesse jogo.")
             else:
-                st.warning("Nenhum jogo encontrado nos próximos 7 dias nesse campeonato.")
+                st.warning("Nenhum jogo futuro encontrado para esse campeonato.")
