@@ -5,6 +5,7 @@ from datetime import datetime, date, timedelta
 
 st.set_page_config(page_title="Relatório ASCbet 70%+", layout="wide")
 st.title("⚽ Relatório Automático ASCbet 70%+")
+st.caption("Horário: Manaus -4 | Puxa: Ontem, Hoje e Amanhã")
 
 API_KEY = st.secrets["API_KEY"]
 
@@ -33,17 +34,23 @@ CAMPEONATOS_FAVORITOS = {
 }
 
 @st.cache_data(ttl=600)
-def buscar_jogos_hoje():
-    hoje = date.today().isoformat()
-    url = f"https://v3.football.api-sports.io/fixtures?date={hoje}"
-    headers = {"x-apisports-key": API_KEY}
-    response = requests.get(url, headers=headers, timeout=15)
-    return response.json()["response"]
+def buscar_jogos_3_dias():
+    hoje = date.today()
+    ontem = hoje - timedelta(days=1)
+    amanha = hoje + timedelta(days=1)
+    datas = [ontem.isoformat(), hoje.isoformat(), amanha.isoformat()]
+    
+    todos_jogos = []
+    for d in datas:
+        url = f"https://v3.football.api-sports.io/fixtures?date={d}"
+        headers = {"x-apisports-key": API_KEY}
+        response = requests.get(url, headers=headers, timeout=15)
+        todos_jogos.extend(response.json()["response"])
+    return todos_jogos
 
 def converter_horario(utc_str):
-    # Pega UTC e subtrai 4 horas = Manaus
     utc_time = datetime.fromisoformat(utc_str.replace("Z", ""))
-    horario_br = utc_time - timedelta(hours=4)
+    horario_br = utc_time - timedelta(hours=4) # Manaus -4
     return horario_br.strftime("%d/%m %H:%M")
 
 # ABAS
@@ -61,12 +68,14 @@ with tab2:
         if resultados:
             campeonato_selecionado = st.selectbox("Resultado:", options=sorted(list(resultados.values())))
             league_id_busca = [k for k, v in resultados.items() if v == campeonato_selecionado][0]
+        else:
+            st.warning("Não encontrei na sua lista.")
 
 league_id_final = league_id_busca if league_id_busca else league_id
 
 if st.button("Gerar Relatório 70%+"):
-    with st.spinner("Analisando jogos de hoje..."):
-        jogos = buscar_jogos_hoje()
+    with st.spinner("Buscando jogos de Ontem, Hoje e Amanhã..."):
+        jogos = buscar_jogos_3_dias()
         jogos_filtrados = [j for j in jogos if j["league"]["id"] == league_id_final]
         
         relatorio = []
@@ -76,15 +85,18 @@ if st.button("Gerar Relatório 70%+"):
             status = jogo["fixture"]["status"]["short"]
             if status == "NS": status = "A Começar"
             elif status == "FT": status = "Finalizado"
+            elif status == "1H": status = "1º Tempo"
+            elif status == "2H": status = "2º Tempo"
             
             relatorio.append({
-                "Horário Manaus": horario_br,
+                "Data/Hora Manaus": horario_br,
                 "Jogo": f"{jogo['teams']['home']['name']} x {jogo['teams']['away']['name']}",
                 "Status": status
             })
         
         if relatorio:
-            st.success(f"{len(relatorio)} jogos encontrados hoje!")
-            st.dataframe(pd.DataFrame(relatorio), use_container_width=True)
+            st.success(f"{len(relatorio)} jogos encontrados!")
+            df = pd.DataFrame(relatorio)
+            st.dataframe(df.sort_values("Data/Hora Manaus"), use_container_width=True)
         else:
-            st.warning("Nenhum jogo hoje nesse campeonato.")
+            st.warning("Nenhum jogo encontrado nos próximos 3 dias nesse campeonato.")
