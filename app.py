@@ -1,7 +1,6 @@
 import streamlit as st
 import requests
 import pandas as pd
-from fpdf import FPDF
 from datetime import datetime
 
 st.set_page_config(page_title="ASCbet V16", page_icon="⚽")
@@ -10,22 +9,22 @@ st.title("⚽ ASCbet V16 - Analisador Profissional")
 API_KEY = "n9LSMA3Cq2j28W8oMcliM9LpHbpfRCZkjIrpjgAnXCxLTME2FwCCkWfSlrHb"
 
 def buscar_jogos_hoje():
-    url = "https://api-football-v1.p.rapidapi.com/v3/fixtures"
     hoje = datetime.now().strftime("%Y-%m-%d")
-    querystring = {"date": hoje}
-    headers = {
-        "X-RapidAPI-Key": API_KEY,
-        "X-RapidAPI-Host": "api-football-v1.p.rapidapi.com"
+    url = f"https://api.sportmonks.com/v3/football/fixtures/date/{hoje}"
+    params = {
+        "api_token": API_KEY,
+        "include": "participants" # pra vir nome dos times
     }
     try:
-        response = requests.get(url, headers=headers, params=querystring, timeout=30)
-        return response.json()['response']
-    except:
+        response = requests.get(url, params=params, timeout=30)
+        data = response.json()
+        return data.get('data', [])
+    except Exception as e:
+        st.error(f"Erro: {e}")
         return []
 
 def analisar_jogo(jogo):
     # LÓGICA V16: Aqui entra sua análise de 70%+
-    # Por enquanto está simulada em 75%
     probabilidade = 75.5 
     return probabilidade
 
@@ -34,15 +33,17 @@ if st.button("🚀 Analisar Jogos de Hoje"):
         jogos = buscar_jogos_hoje()
         
         if not jogos:
-            st.error("Erro ao buscar jogos. Verifique sua chave da API.")
+            st.error("Nenhum jogo encontrado ou erro na API.")
         else:
             aprovados = []
-            for jogo in jogos[:20]: # Limitei em 20 jogos pra não estourar a API grátis
+            for jogo in jogos[:20]: # limite pra API grátis
                 prob = analisar_jogo(jogo)
                 if prob >= 70:
+                    time_casa = jogo['participants'][0]['name']
+                    time_fora = jogo['participants'][1]['name']
                     aprovados.append({
-                        "Casa": jogo['teams']['home']['name'],
-                        "Fora": jogo['teams']['away']['name'],
+                        "Casa": time_casa,
+                        "Fora": time_fora,
                         "Probabilidade": f"{prob}%"
                     })
             
