@@ -8,18 +8,18 @@ st.set_page_config(page_title="Relatório ASCbet 70%+", layout="wide")
 st.title("Relatório Automático ASCbet 70%+")
 st.write("App conectado na API de Futebol")
 
-# PEGA A CHAVE DOS SECRETS - JÁ CORRIGIDO
+# PEGA A CHAVE DOS SECRETS
 try:
     API_KEY = st.secrets["API_KEY"]
 except KeyError:
     st.error("Chave API_KEY não encontrada nos Secrets. \n\n Vá em Settings > Secrets e adicione: \n API_KEY = \"sua_chave\"")
     st.stop()
 
-# FUNÇÃO PARA BUSCAR CAMPEONATOS
+# FUNÇÃO PARA BUSCAR CAMPEONATOS - URL CORRIGIDA
 @st.cache_data(ttl=3600)
 def buscar_campeonatos():
-    url = "https://api.api-futebol.com.br/v1/campeonatos"
-    headers = {"Authorization": f"Bearer {API_KEY}"}  # Padrão da API-Futebol
+    url = "https://api.api-futebol.com/v1/campeonatos"  # <-- CORRIGIDO SEM .BR
+    headers = {"Authorization": f"Bearer {API_KEY}"}
     
     try:
         response = requests.get(url, headers=headers, timeout=10)
@@ -27,7 +27,7 @@ def buscar_campeonatos():
         return response.json()
     except requests.exceptions.HTTPError as e:
         if response.status_code == 401:
-            st.error(f"Erro 401: Chave inválida. Verifique se a chave {API_KEY[:5]}... está ativa no site da API-Futebol")
+            st.error(f"Erro 401: Chave inválida. Verifique se a chave {API_KEY[:5]}... está ativa em api.api-futebol.com")
         else:
             st.error(f"Erro HTTP {response.status_code}: {e}")
         return None
@@ -50,5 +50,3 @@ if st.button("Buscar Campeonatos"):
         st.dataframe(df, use_container_width=True)
         
         st.write("Última atualização:", datetime.now().strftime("%d/%m/%Y %H:%M"))
-
-
