@@ -1,18 +1,15 @@
 import streamlit as st
 import requests
 import pandas as pd
-from datetime import datetime, date
-import pytz
+from datetime import datetime, date, timedelta
 
 st.set_page_config(page_title="Relatório ASCbet 70%+", layout="wide")
 st.title("⚽ Relatório Automático ASCbet 70%+")
 
 API_KEY = st.secrets["API_KEY"]
-FUSO_BRASIL = pytz.timezone("America/Manaus")
 
 # SUA LISTA DE CAMPEONATOS FAVORITOS
 CAMPEONATOS_FAVORITOS = {
-    # EUROPA
     39: "Inglaterra - Premier League",
     40: "Inglaterra - Championship",
     140: "Espanha - La Liga",
@@ -24,8 +21,6 @@ CAMPEONATOS_FAVORITOS = {
     119: "Dinamarca - Superliga",
     103: "Finlandia - Veikkausliiga",
     106: "Noruega - Eliteserien",
-    
-    # AMÉRICAS
     71: "Brasil - Serie A",
     72: "Brasil - Serie B",
     128: "Argentina - Liga Profesional",
@@ -33,10 +28,8 @@ CAMPEONATOS_FAVORITOS = {
     256: "USA - MLS",
     268: "Uruguai - Primera Division",
     239: "Colombia - Primera A",
-    
-    # ASIA
     292: "China - Super League",
-    88: "India - Super League" # ID 88 da India
+    102: "India - Super League"
 }
 
 @st.cache_data(ttl=600)
@@ -47,14 +40,17 @@ def buscar_jogos_hoje():
     response = requests.get(url, headers=headers, timeout=15)
     return response.json()["response"]
 
+def converter_horario(utc_str):
+    # Pega UTC e subtrai 4 horas = Manaus
+    utc_time = datetime.fromisoformat(utc_str.replace("Z", ""))
+    horario_br = utc_time - timedelta(hours=4)
+    return horario_br.strftime("%d/%m %H:%M")
+
 # ABAS
 tab1, tab2 = st.tabs(["📌 Meus Campeonatos", "🔍 Buscar Campeonato"])
 
 with tab1:
-    campeonato_selecionado = st.selectbox(
-        "Escolha da Lista:",
-        options=sorted(list(CAMPEONATOS_FAVORITOS.values()))
-    )
+    campeonato_selecionado = st.selectbox("Escolha da Lista:", options=sorted(list(CAMPEONATOS_FAVORITOS.values())))
     league_id = [k for k, v in CAMPEONATOS_FAVORITOS.items() if v == campeonato_selecionado][0]
 
 with tab2:
@@ -65,8 +61,6 @@ with tab2:
         if resultados:
             campeonato_selecionado = st.selectbox("Resultado:", options=sorted(list(resultados.values())))
             league_id_busca = [k for k, v in resultados.items() if v == campeonato_selecionado][0]
-        else:
-            st.warning("Não encontrei na sua lista.")
 
 league_id_final = league_id_busca if league_id_busca else league_id
 
@@ -77,14 +71,11 @@ if st.button("Gerar Relatório 70%+"):
         
         relatorio = []
         for jogo in jogos_filtrados:
-            utc_time = datetime.fromisoformat(jogo["fixture"]["date"].replace("Z", "+00:00"))
-            horario_br = utc_time.astimezone(FUSO_BRASIL).strftime("%d/%m %H:%M")
+            horario_br = converter_horario(jogo["fixture"]["date"])
             
             status = jogo["fixture"]["status"]["short"]
             if status == "NS": status = "A Começar"
             elif status == "FT": status = "Finalizado"
-            elif status == "1H": status = "1º Tempo"
-            elif status == "2H": status = "2º Tempo"
             
             relatorio.append({
                 "Horário Manaus": horario_br,
