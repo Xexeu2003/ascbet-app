@@ -5,7 +5,7 @@ from datetime import datetime, date, timedelta
 
 st.set_page_config(page_title="Relatório ASCbet 70%+", layout="wide")
 st.title("⚽ Relatório Automático ASCbet 70%+")
-st.caption("Horário: Manaus -4 | Puxa: Ontem, Hoje e Amanhã")
+st.caption("Horário: Manaus -4 | Clique no jogo para ver as probabilidades")
 
 API_KEY = st.secrets["API_KEY"]
 
@@ -25,7 +25,6 @@ def buscar_jogos_3_dias():
     ontem = hoje - timedelta(days=1)
     amanha = hoje + timedelta(days=1)
     datas = [ontem.isoformat(), hoje.isoformat(), amanha.isoformat()]
-    
     todos_jogos = []
     for d in datas:
         url = f"https://v3.football.api-sports.io/fixtures?date={d}"
@@ -36,53 +35,78 @@ def buscar_jogos_3_dias():
 
 def converter_horario(utc_str):
     utc_time = datetime.fromisoformat(utc_str.replace("Z", ""))
-    horario_br = utc_time - timedelta(hours=4)
-    return horario_br.strftime("%d/%m %H:%M")
+    return (utc_time - timedelta(hours=4)).strftime("%d/%m %H:%M")
 
 def traduzir_status(codigo):
-    status_dict = {
-        "NS": "A Começar",
-        "1H": "1º Tempo", "HT": "Intervalo", "2H": "2º Tempo",
-        "ET": "Prorrogação", "P": "Pênaltis",
-        "FT": "Finalizado", "AET": "Finalizado", "PEN": "Finalizado",
-        "PST": "Adiado", "CANC": "Cancelado", "ABD": "Abandonado"
-    }
+    status_dict = {"NS": "A Começar","1H": "1º Tempo","HT": "Intervalo","2H": "2º Tempo",
+                   "FT": "Finalizado","PST": "Adiado","CANC": "Cancelado"}
     return status_dict.get(codigo, codigo)
+
+# FUNÇÃO FAKE PRA SIMULAR OS 70%+ POR ENQUANTO
+# Depois trocamos pela API real de estatísticas
+def calcular_probabilidades(fixture_id):
+    # Aqui depois vamos buscar os últimos 10 jogos de cada time
+    # Por enquanto vou simular pra testar o clique
+    return {
+        "Over 1.5": 82,
+        "Over 2.5": 68, 
+        "BTTS": 75,
+        "Over 3.5": 41
+    }
 
 tab1, tab2 = st.tabs(["📌 Meus Campeonatos", "🔍 Buscar Campeonato"])
 with tab1:
     campeonato_selecionado = st.selectbox("Escolha da Lista:", options=sorted(list(CAMPEONATOS_FAVORITOS.values())))
     league_id = [k for k, v in CAMPEONATOS_FAVORITOS.items() if v == campeonato_selecionado][0]
-with tab2:
-    busca = st.text_input("Digite o nome: Ex: Brasil, Espanha")
-    league_id_busca = None
-    if busca:
-        resultados = {k:v for k,v in CAMPEONATOS_FAVORITOS.items() if busca.lower() in v.lower()}
-        if resultados:
-            campeonato_selecionado = st.selectbox("Resultado:", options=sorted(list(resultados.values())))
-            league_id_busca = [k for k, v in resultados.items() if v == campeonato_selecionado][0]
 
-league_id_final = league_id_busca if league_id_busca else league_id
+league_id_final = league_id
 
 if st.button("Gerar Relatório 70%+"):
-    with st.spinner("Buscando jogos..."):
-        jogos = buscar_jogos_3_dias()
-        jogos_filtrados = [j for j in jogos if j["league"]["id"] == league_id_final]
+    jogos = buscar_jogos_3_dias()
+    jogos_filtrados = [j for j in jogos if j["league"]["id"] == league_id_final]
+    
+    relatorio = []
+    for jogo in jogos_filtrados:
+        relatorio.append({
+            "fixture_id": jogo["fixture"]["id"], # ID escondido pra clicar
+            "Data/Hora Manaus": converter_horario(jogo["fixture"]["date"]),
+            "Jogo": f"{jogo['teams']['home']['name']} x {jogo['teams']['away']['name']}",
+            "Status": traduzir_status(jogo["fixture"]["status"]["short"])
+        })
+    
+    if relatorio:
+        st.success(f"{len(relatorio)} jogos encontrados!")
+        df = pd.DataFrame(relatorio)
         
-        relatorio = []
-        for jogo in jogos_filtrados:
-            horario_br = converter_horario(jogo["fixture"]["date"])
-            status = traduzir_status(jogo["fixture"]["status"]["short"]) # <- AQUI TRADUZ
+        # TIRA A NUMERAÇÃO E DEIXA CLICÁVEL
+        evento = st.dataframe(
+            df[["Data/Hora Manaus", "Jogo", "Status"]], # Não mostra fixture_id
+            use_container_width=True,
+            hide_index=True, # <- TIRA O 0,1,2
+            on_select="rerun",
+            selection_mode="single-row"
+        )
+        
+        # QUANDO CLICAR NO JOGO
+        if evento.selection.rows:
+            linha_clicada = evento.selection.rows[0]
+            fixture_id = df.iloc[linha_clicada]["fixture_id"]
+            jogo_nome = df.iloc[linha_clicada]["Jogo"]
             
-            relatorio.append({
-                "Data/Hora Manaus": horario_br,
-                "Jogo": f"{jogo['teams']['home']['name']} x {jogo['teams']['away']['name']}",
-                "Status": status
-            })
-        
-        if relatorio:
-            st.success(f"{len(relatorio)} jogos encontrados!")
-            df = pd.DataFrame(relatorio)
-            st.dataframe(df.sort_values("Data/Hora Manaus"), use_container_width=True)
-        else:
-            st.warning("Nenhum jogo encontrado nos próximos 3 dias.")
+            st.divider()
+            st.subheader(f"📊 Análise: {jogo_nome}")
+            
+            probs = calcular_probabilidades(fixture_id)
+            
+            # MOSTRA SÓ IGUAL OU MAIOR QUE 70%
+            st.write("### Palpites 70%+")
+            achou = False
+            for mercado, valor in probs.items():
+                if valor >= 70:
+                    st.success(f"**{mercado}: {valor}%**")
+                    achou = True
+            
+            if not achou:
+                st.warning("Nenhum mercado acima de 70% nesse jogo.")
+    else:
+        st.warning("Nenhum jogo encontrado.")
