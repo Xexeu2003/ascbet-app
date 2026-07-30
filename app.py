@@ -10,7 +10,7 @@ st.write("App conectado na API de Futebol")
 API_KEY = st.secrets["API_KEY"]
 
 url = "https://api.api-futebol.com.br/v1/campeonatos"
-headers = {"Authorization": f"Bearer {API_KEY}"}
+headers = {"Authorization": f"{API_KEY}"}
 
 if st.button("Buscar Campeonatos"):
     with st.spinner("Buscando dados..."):
