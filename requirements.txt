@@ -1,7 +1,4 @@
 streamlit
 pandas
 requests
-reportlab
-ascbet-app/
-  app.py
-  requirements.txt
+fpdf2
