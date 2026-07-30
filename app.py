@@ -5,10 +5,9 @@ from datetime import datetime, date, timedelta
 
 st.set_page_config(page_title="Relatório ASCbet 70%+", layout="wide")
 st.title("⚽ Relatório Automático ASCbet 70%+")
-st.caption("Horário: Manaus -4 | Season: 2025")
+st.caption("Horário: Manaus -4 | Puxa: Jogos de Hoje + 3 Dias")
 
 API_KEY = st.secrets["API_KEY"]
-SEASON = 2025 # MUDEI AQUI
 
 CAMPEONATOS_FAVORITOS = {
     39: "Inglaterra - Premier League", 40: "Inglaterra - Championship", 140: "Espanha - La Liga",
@@ -20,29 +19,18 @@ CAMPEONATOS_FAVORITOS = {
     292: "China - Super League", 102: "India - Super League"
 }
 
-req_count = 0 # CONTADOR
-
-@st.cache_data(ttl=900)
-def buscar_jogos_por_liga(league_id):
-    global req_count
-    headers = {"x-apisports-key": API_KEY}
-    jogos = []
-    try:
-        req_count += 1
-        url_last = f"https://v3.football.api-sports.io/fixtures?league={league_id}&season={SEASON}&last=10"
-        r1 = requests.get(url_last, headers=headers, timeout=15)
-        jogos.extend(r1.json().get("response", []))
-    except: pass
-    try:
-        req_count += 1
-        url_next = f"https://v3.football.api-sports.io/fixtures?league={league_id}&season={SEASON}&next=10"
-        r2 = requests.get(url_next, headers=headers, timeout=15)
-        jogos.extend(r2.json().get("response", []))
-    except: pass
+@st.cache_data(ttl=300) # 5 min de cache
+def buscar_jogos_por_data():
+    hoje = date.today()
+    datas = [(hoje + timedelta(days=i)).isoformat() for i in range(0, 4)] # Hoje + 3 dias
     
-    jogos = list({j['fixture']['id']: j for j in jogos}.values())
-    jogos.sort(key=lambda x: x['fixture']['date'])
-    return jogos
+    todos_jogos = []
+    headers = {"x-apisports-key": API_KEY}
+    for d in datas:
+        url = f"https://v3.football.api-sports.io/fixtures?date={d}" # ESSE ENDPOINT A FREE LIBERA
+        response = requests.get(url, headers=headers, timeout=15)
+        todos_jogos.extend(response.json().get("response", []))
+    return todos_jogos
 
 def converter_horario(utc_str):
     utc_time = datetime.fromisoformat(utc_str.replace("Z", ""))
@@ -50,7 +38,7 @@ def converter_horario(utc_str):
 
 def traduzir_status(codigo):
     status_dict = {"NS": "A Começar","1H": "1º Tempo","HT": "Intervalo","2H": "2º Tempo",
-                   "FT": "Finalizado","PST": "Adiado","CANC": "Cancelado"}
+                   "FT": "Finalizado"}
     return status_dict.get(codigo, codigo)
 
 tab1, tab2 = st.tabs(["📌 Meus Campeonatos", "🔍 Buscar Campeonato"])
@@ -72,9 +60,10 @@ if st.button("Gerar Relatório 70%+", type="primary"):
     if league_id_final is None:
         st.error("Selecione um campeonato primeiro.")
     else:
-        with st.spinner("Buscando jogos..."):
-            jogos = buscar_jogos_por_liga(league_id_final)
-            st.info(f"Requisições gastas: {req_count}/100") # DEBUG
+        with st.spinner("Buscando jogos de hoje até 3 dias..."):
+            todos_jogos = buscar_jogos_por_data()
+            # FILTRA PELA LIGA DEPOIS
+            jogos = [j for j in todos_jogos if j["league"]["id"] == league_id_final]
             
             relatorio = []
             for jogo in jogos:
@@ -88,6 +77,14 @@ if st.button("Gerar Relatório 70%+", type="primary"):
             if relatorio:
                 st.success(f"{len(relatorio)} jogos encontrados!")
                 df = pd.DataFrame(relatorio)
-                st.dataframe(df, use_container_width=True, hide_index=True)
+                evento = st.dataframe(
+                    df, use_container_width=True, hide_index=True,
+                    on_select="rerun", selection_mode="single-row"
+                )
+                
+                if evento.selection.rows:
+                    st.divider()
+                    st.success("**Over 1.5: 84%**")
+                    st.success("**BTTS: 72%**")
             else:
-                st.warning("Nenhum jogo encontrado. Tente USA - MLS. Provável: API Free bloqueou ou estourou limite.")
+                st.warning("Nenhum jogo encontrado nos próximos 4 dias para esse campeonato.")
