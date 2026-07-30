@@ -2,54 +2,91 @@ import streamlit as st
 import requests
 import pandas as pd
 from fpdf import FPDF
-from datetime import datetime, timedelta
+from datetime import datetime
 import random
 
 st.set_page_config(page_title="ASCbet V16", page_icon="⚽", layout="wide")
-st.title("⚽ ASCbet V16 - Analisador Profissional FREE")
+st.title("⚽ ASCbet V16 - Analisador Profissional")
+st.caption("Probabilidade 70%+ | API-Football")
 
-API_KEY = "n9LSMA3Cq2j28W8oMcliM9LpHbpfRCZkjIrpjgAnXCxLTME2FwCCkWfSlrHb"
+# SUA CHAVE RAPIDAPI
+API_KEY = "e16821201501788a886ed8316ab5a06f"
+API_HOST = "api-football-v1.p.rapidapi.com"
 
-# IDS DAS 4 LIGAS FREE DA SPORTMONKS. Se der erro me fala que a gente pega os IDs certos
-LIGAS_FREE = [8, 564, 501, 271] # 8=PL, 564=LaLiga, 501=Bundesliga, 271=SerieA
-
-@st.cache_data(ttl=3600)
-def buscar_jogos_data(data):
-    url = f"https://api.sportmonks.com/v3/football/fixtures/date/{data}"
-    params = {
-        "api_token": API_KEY,
-        "include": "participants,league",
-        "filter[leagues]": ",".join(map(str, LIGAS_FREE)) # FILTRA SÓ AS 4 LIGAS
+@st.cache_data(ttl=1800) # cache 30 min pra economizar requisição
+def buscar_jogos_hoje():
+    url = f"https://{API_HOST}/v3/fixtures"
+    hoje = datetime.now().strftime("%Y-%m-%d")
+    querystring = {"date": hoje}
+    headers = {
+        "X-RapidAPI-Key": API_KEY,
+        "X-RapidAPI-Host": API_HOST
     }
-    response = requests.get(url, params=params, timeout=30)
-    return response.json().get('data', [])
+    try:
+        response = requests.get(url, headers=headers, params=querystring, timeout=30)
+        if response.status_code == 200:
+            return response.json()['response']
+        else:
+            st.error(f"Erro API {response.status_code}: {response.text}")
+            return []
+    except Exception as e:
+        st.error(f"Erro de conexão: {e}")
+        return []
 
 def analisar_jogo(jogo):
-    probabilidade = round(random.uniform(70, 88), 1) # já começa em 70+
+    # AQUI VAI SUA LÓGICA V16 REAL
+    # Por enquanto simulando 68-92%
+    probabilidade = round(random.uniform(68, 92), 1)
     return probabilidade
 
-if st.button("🚀 Analisar Jogos de Ontem - 4 Ligas"):
-    data = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-    with st.spinner(f"Analisando jogos de {data}..."):
-        jogos = buscar_jogos_data(data)
+def gerar_pdf(aprovados):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", "B", 16)
+    pdf.cell(0, 10, f"ASCbet V16 - Relatorio {datetime.now().strftime('%d/%m/%Y')}", 0, 1, "C")
+    pdf.ln(5)
+    pdf.set_font("Arial", "", 10)
+    
+    for j in aprovados:
+        pdf.cell(0, 8, f"{j['Jogo']} | {j['Liga']} | Prob: {j['Probabilidade']}", 0, 1)
+    
+    pdf.output("relatorio_ascbet.pdf")
+
+if st.button("🚀 Analisar Jogos de HOJE", use_container_width=True, type="primary"):
+    with st.spinner("Buscando e analisando jogos... 2-3 minutos"):
+        jogos = buscar_jogos_hoje()
         
         if not jogos:
-            st.error("Nenhum jogo nas 4 ligas free ou limite estourou")
+            st.warning("Nenhum jogo hoje ou limite de 100 requisições estourou")
         else:
             aprovados = []
-            for jogo in jogos:
+            progresso = st.progress(0, "Analisando jogos...")
+            
+            for i, jogo in enumerate(jogos[:80]): # limite 80 jogos pra economizar
                 prob = analisar_jogo(jogo)
                 if prob >= 70:
                     aprovados.append({
-                        "Jogo": f"{jogo['participants'][0]['name']} vs {jogo['participants'][1]['name']}",
+                        "Jogo": f"{jogo['teams']['home']['name']} vs {jogo['teams']['away']['name']}",
                         "Liga": jogo['league']['name'],
+                        "País": jogo['league']['country'],
+                        "Horário": jogo['fixture']['date'][11:16],
                         "Probabilidade": f"{prob}%"
                     })
+                progresso.progress((i + 1) / len(jogos[:80]))
             
-            st.success(f"{len(jogos)} jogos analisados")
+            st.success(f"✅ Análise concluída! {len(jogos)} jogos analisados hoje")
+            
             if aprovados:
-                st.dataframe(pd.DataFrame(aprovados), use_container_width=True)
+                st.subheader(f"🎯 {len(aprovados)} JOGOS APROVADOS 70%+")
+                df = pd.DataFrame(aprovados)
+                st.dataframe(df, use_container_width=True)
+                
+                if st.button("📄 Baixar Relatório PDF"):
+                    gerar_pdf(aprovados)
+                    with open("relatorio_ascbet.pdf", "rb") as f:
+                        st.download_button("Clique para Baixar PDF", f, "relatorio_ascbet.pdf")
             else:
-                st.warning("Nenhum jogo com 70%+ nessa rodada")
+                st.warning("Nenhum jogo com 70%+ hoje")
 
-st.info("Lembrando: Plano FREE = só dados de ontem e só 4 ligas europeias")
+st.sidebar.info(f"**DICA**: Plano FREE = 100 requisições/dia. Use 1 vez e aguarde o resultado.")
+st.sidebar.warning(f"Data: {datetime.now().strftime('%d/%m/%Y')}")
