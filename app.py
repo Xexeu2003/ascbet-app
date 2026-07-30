@@ -10,7 +10,7 @@ st.write("App conectado na API de Futebol")
 
 # PEGA A CHAVE DOS SECRETS
 try:
-    API_KEY = st.secrets["API_KEY"]
+    headers = {"Authorization": API_KEY}
 except:
     st.error("Chave API_KEY não encontrada nos Secrets. Vá em Settings > Secrets e adicione: API_KEY = \"sua_chave\"")
     st.stop()
