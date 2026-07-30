@@ -5,9 +5,10 @@ from datetime import datetime, date, timedelta
 
 st.set_page_config(page_title="Relatório ASCbet 70%+", layout="wide")
 st.title("⚽ Relatório Automático ASCbet 70%+")
-st.caption("Horário: Manaus -4 | Puxa: Próximos 10 jogos | Clique no jogo para ver as probabilidades")
+st.caption("Horário: Manaus -4 | Puxa: Últimos 10 + Próximos 10 | Clique no jogo")
 
 API_KEY = st.secrets["API_KEY"]
+SEASON = 2026
 
 CAMPEONATOS_FAVORITOS = {
     39: "Inglaterra - Premier League", 40: "Inglaterra - Championship", 140: "Espanha - La Liga",
@@ -19,13 +20,27 @@ CAMPEONATOS_FAVORITOS = {
     292: "China - Super League", 102: "India - Super League"
 }
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=900)
 def buscar_jogos_por_liga(league_id):
-    # PUXA DIRETO PELA LIGA - FUNCIONA MELHOR NA API FREE
-    url = f"https://v3.football.api-sports.io/fixtures?league={league_id}&season=2026&next=10"
     headers = {"x-apisports-key": API_KEY}
-    response = requests.get(url, headers=headers, timeout=15)
-    return response.json().get("response", [])
+    jogos = []
+    # PUXA OS ULTIMOS 10
+    try:
+        url_last = f"https://v3.football.api-sports.io/fixtures?league={league_id}&season={SEASON}&last=10"
+        r1 = requests.get(url_last, headers=headers, timeout=15)
+        jogos.extend(r1.json().get("response", []))
+    except: pass
+    # PUXA OS PROXIMOS 10
+    try:
+        url_next = f"https://v3.football.api-sports.io/fixtures?league={league_id}&season={SEASON}&next=10"
+        r2 = requests.get(url_next, headers=headers, timeout=15)
+        jogos.extend(r2.json().get("response", []))
+    except: pass
+    
+    # Tira duplicata e ordena
+    jogos = list({j['fixture']['id']: j for j in jogos}.values())
+    jogos.sort(key=lambda x: x['fixture']['date'])
+    return jogos
 
 def converter_horario(utc_str):
     utc_time = datetime.fromisoformat(utc_str.replace("Z", ""))
@@ -36,9 +51,9 @@ def traduzir_status(codigo):
                    "FT": "Finalizado","PST": "Adiado","CANC": "Cancelado"}
     return status_dict.get(codigo, codigo)
 
-def calcular_probabilidades(fixture_id):
-    # FAKE por enquanto
-    return {"Over 1.5": 82, "Over 2.5": 68, "BTTS": 75, "Over 3.5": 41}
+def calcular_probabilidades(time_casa_id, time_fora_id, league_id):
+    # FAKE PRA TESTAR O LAYOUT. DEPOIS COLOCAMOS A LOGICA REAL DOS 70%+
+    return {"Over 1.5": 84, "BTTS": 72, "Over 2.5": 65}
 
 tab1, tab2 = st.tabs(["📌 Meus Campeonatos", "🔍 Buscar Campeonato"])
 league_id_final = None
@@ -59,13 +74,15 @@ if st.button("Gerar Relatório 70%+", type="primary"):
     if league_id_final is None:
         st.error("Selecione um campeonato primeiro.")
     else:
-        with st.spinner("Buscando próximos 10 jogos da liga..."):
+        with st.spinner("Buscando jogos..."):
             jogos = buscar_jogos_por_liga(league_id_final)
             
             relatorio = []
             for jogo in jogos:
                 relatorio.append({
                     "fixture_id": jogo["fixture"]["id"],
+                    "casa_id": jogo["teams"]["home"]["id"],
+                    "fora_id": jogo["teams"]["away"]["id"],
                     "Data/Hora Manaus": converter_horario(jogo["fixture"]["date"]),
                     "Jogo": f"{jogo['teams']['home']['name']} x {jogo['teams']['away']['name']}",
                     "Status": traduzir_status(jogo["fixture"]["status"]["short"])
@@ -86,12 +103,14 @@ if st.button("Gerar Relatório 70%+", type="primary"):
                 if evento.selection.rows:
                     linha_clicada = evento.selection.rows[0]
                     fixture_id = df.iloc[linha_clicada]["fixture_id"]
+                    casa_id = df.iloc[linha_clicada]["casa_id"]
+                    fora_id = df.iloc[linha_clicada]["fora_id"]
                     jogo_nome = df.iloc[linha_clicada]["Jogo"]
                     
                     st.divider()
                     st.subheader(f"📊 Análise: {jogo_nome}")
                     
-                    probs = calcular_probabilidades(fixture_id)
+                    probs = calcular_probabilidades(casa_id, fora_id, league_id_final)
                     
                     st.write("### Palpites 70%+")
                     achou = False
@@ -101,6 +120,9 @@ if st.button("Gerar Relatório 70%+", type="primary"):
                             achou = True
                     
                     if not achou:
-                        st.warning("Nenhum mercado acima de 70% nesse jogo.")
+                        st.info("Nenhum mercado acima de 70% nesse jogo.")
             else:
-                st.warning("Nenhum jogo futuro encontrado para esse campeonato.")
+                st.warning("Nenhum jogo recente ou futuro encontrado para esse campeonato na API.")
+
+st.divider()
+st.caption("API: API-Football | Plano: Free 100 req/dia")
