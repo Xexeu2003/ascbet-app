@@ -6,15 +6,14 @@ from datetime import datetime, timedelta
 from fpdf import FPDF
 from scipy.stats import poisson
 
-st.set_page_config(page_title="Analisador V23 Poisson", layout="wide")
-st.title("🚀 Analisador V23 - Poisson + Força Ataque/Defesa")
+st.set_page_config(page_title="Analisador V23.1", layout="wide")
+st.title("🚀 Analisador V23.1 - Poisson + Força Ataque/Defesa")
 st.caption("Calculo Profissional: Gols, Cantos, Cartoes | Min 70%")
 
 # ================== CONFIG ==================
 API_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
 API_URL = "https://apiv2.apifootball.com/"
 
-# SUAS LIGAS PRIORITARIAS
 LIGAS_IDS = {
     "Brasil Serie A": 462, "Brasil Serie B": 463, "Premier League": 148,
     "Champions League": 3, "Libertadores": 2, "La Liga": 302,
@@ -22,7 +21,14 @@ LIGAS_IDS = {
 }
 # ============================================
 
-@st.cache_data(ttl=3600) # Cache pra nao estourar a API Free
+def safe_int(valor):
+    """Converte pra int sem quebrar se vier None ou ''"""
+    try:
+        return int(valor) if valor is not None and valor != '' else 0
+    except:
+        return 0
+
+@st.cache_data(ttl=3600)
 def api_call(action, params_extra):
     params = {"action": action, "APIkey": API_KEY}
     params.update(params_extra)
@@ -32,20 +38,23 @@ def api_call(action, params_extra):
     except: return []
 
 def calcular_stats_8jogos(time_id, league_id, tipo):
-    """Calcula media dos ultimos 8 jogos: Gols, Cantos, Cartoes"""
+    """Calcula media dos ultimos 8 jogos FINALIZADOS: Gols, Cantos, Cartoes"""
     jogos = api_call("get_events", {"team_id": time_id, "from": (datetime.now() - timedelta(days=120)).strftime("%Y-%m-%d"), "to": datetime.now().strftime("%Y-%m-%d")})
     if not isinstance(jogos, list): return {"gols_m":1.3, "gols_s":1.3, "cantos":9.5, "cartoes":3.8}
     
-    ultimos_8 = jogos[:8]
+    # SÓ PEGA JOGOS FINALIZADOS
+    jogos_finalizados = [j for j in jogos if j.get('match_status') == 'Finished']
+    ultimos_8 = jogos_finalizados[:8]
+    
     gols_m = gols_s = cantos = cartoes = jogos_contados = 0
     
     for j in ultimos_8:
         is_home = str(j.get('match_hometeam_id')) == str(time_id)
         if (tipo == "home" and is_home) or (tipo == "away" and not is_home):
-            gols_m += int(j.get('match_hometeam_score', 0)) if is_home else int(j.get('match_awayteam_score', 0))
-            gols_s += int(j.get('match_awayteam_score', 0)) if is_home else int(j.get('match_hometeam_score', 0))
-            cantos += int(j.get('match_corner_home', 0)) + int(j.get('match_corner_away', 0))
-            cartoes += int(j.get('match_yellowcards_home', 0)) + int(j.get('match_yellowcards_away', 0)) + int(j.get('match_redcards_home', 0))*2 + int(j.get('match_redcards_away', 0))*2
+            gols_m += safe_int(j.get('match_hometeam_score')) if is_home else safe_int(j.get('match_awayteam_score'))
+            gols_s += safe_int(j.get('match_awayteam_score')) if is_home else safe_int(j.get('match_hometeam_score'))
+            cantos += safe_int(j.get('match_corner_home')) + safe_int(j.get('match_corner_away'))
+            cartoes += safe_int(j.get('match_yellowcards_home')) + safe_int(j.get('match_yellowcards_away')) + safe_int(j.get('match_redcards_home'))*2 + safe_int(j.get('match_redcards_away'))*2
             jogos_contados += 1
     
     if jogos_contados == 0: return {"gols_m":1.3, "gols_s":1.3, "cantos":9.5, "cartoes":3.8}
@@ -64,11 +73,11 @@ def calcular_poisson(lambda_casa, lambda_fora):
     return prob_0_5_ht, prob_1_5, prob_2_5
 
 def calcular_h2h(casa_id, fora_id):
-    """Media de gols nos ultimos 5 confrontos diretos"""
     h2h = api_call("get_H2H", {"firstTeamId": casa_id, "secondTeamId": fora_id})
     if not isinstance(h2h, list): return 2.5
-    ultimos_5 = h2h[:5]
-    total_gols = sum([int(j.get('match_hometeam_score', 0)) + int(j.get('match_awayteam_score', 0)) for j in ultimos_5])
+    jogos_finalizados = [j for j in h2h if j.get('match_status') == 'Finished']
+    ultimos_5 = jogos_finalizados[:5]
+    total_gols = sum([safe_int(j.get('match_hometeam_score')) + safe_int(j.get('match_awayteam_score')) for j in ultimos_5])
     return total_gols / len(ultimos_5) if ultimos_5 else 2.5
 
 def calcular_probabilidade_final(casa_id, fora_id, league_id):
@@ -76,9 +85,10 @@ def calcular_probabilidade_final(casa_id, fora_id, league_id):
     stats_fora = calcular_stats_8jogos(fora_id, league_id, "away")
     
     tabela = api_call("get_standings", {"league_id": league_id})
-    total_gols_liga = sum([int(t.get('all_goals_for', 1)) for t in tabela])
+    if not isinstance(tabela, list): tabela = []
+    total_gols_liga = sum([safe_int(t.get('all_goals_for')) for t in tabela])
     total_jogos_liga = max(len(tabela), 1) * 2
-    media_liga = total_gols_liga / total_jogos_liga
+    media_liga = total_gols_liga / total_jogos_liga if total_jogos_liga > 0 else 2.6
     
     atq_casa = stats_casa['gols_m'] / (media_liga / 2)
     def_casa = stats_casa['gols_s'] / (media_liga / 2)
@@ -93,7 +103,6 @@ def calcular_probabilidade_final(casa_id, fora_id, league_id):
     p_cartoes = 1 - poisson.cdf(3, (stats_casa['cartoes'] + stats_fora['cartoes']) / 2)
     media_h2h = calcular_h2h(casa_id, fora_id)
     
-    # Formula Final V16
     prob_final = (p_2_5 * 0.35 + p_1_5 * 0.15 + p_0_5 * 0.1 + p_cantos * 0.2 + p_cartoes * 0.2) * 100
     
     return round(prob_final), round(p_0_5*100), round(p_1_5*100), round(p_2_5*100), round(p_cantos*100), round(p_cartoes*100), round(media_h2h, 2), stats_casa, stats_fora
@@ -102,10 +111,10 @@ def gerar_pdf(df):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", "B", 16)
-    pdf.cell(200, 10, "Relatorio Analisador V23", ln=True, align="C")
+    pdf.cell(200, 10, "Relatorio Analisador V23.1", ln=True, align="C")
     pdf.set_font("Arial", "", 7)
     for i, row in df.iterrows():
-        texto = f"{row['Data']} | {row['Liga']} R{row['Rodada']} | {row['Jogo']} | Pos:{row['Pos']} | Prob:{row['Prob %']}% | 2.5:{row['Prob 2.5']}% | Cantos:{row['Prob Cantos']}% | Cartoes:{row['Prob Cartoes']}%"
+        texto = f"{row['Data']} | {row['Liga']} R{row['Rodada']} | {row['Jogo']} | Prob:{row['Prob %']}% | 2.5:{row['Prob 2.5']}% | Cantos:{row['Prob Cantos']}% | Cartoes:{row['Prob Cartoes']}%"
         pdf.cell(200, 5, texto.encode('latin-1', 'replace').decode('latin-1'), ln=True)
     return pdf.output(dest='S').encode('latin1')
 
@@ -122,7 +131,7 @@ if st.button("🚀 ANALISAR JOGOS 70%+"):
         resultados = []
         if isinstance(jogos, list):
             for jogo in jogos:
-                if int(jogo.get('league_id', 0)) in LIGAS_IDS.values():
+                if safe_int(jogo.get('league_id')) in LIGAS_IDS.values():
                     casa_id = jogo.get('match_hometeam_id')
                     fora_id = jogo.get('match_awayteam_id')
                     league_id = jogo.get('league_id')
@@ -131,8 +140,8 @@ if st.button("🚀 ANALISAR JOGOS 70%+"):
                     
                     if prob_final >= limite_prob:
                         tabela = api_call("get_standings", {"league_id": league_id})
-                        pos_casa = next((t['overall_league_position'] for t in tabela if str(t['team_id']) == casa_id), 'N/A')
-                        pos_fora = next((t['overall_league_position'] for t in tabela if str(t['team_id']) == fora_id), 'N/A')
+                        pos_casa = next((t['overall_league_position'] for t in tabela if str(t.get('team_id')) == str(casa_id)), 'N/A')
+                        pos_fora = next((t['overall_league_position'] for t in tabela if str(t.get('team_id')) == str(fora_id)), 'N/A')
                         
                         resultados.append({
                             "Data": f"{jogo.get('match_date')} {jogo.get('match_time')}",
@@ -155,6 +164,6 @@ if st.button("🚀 ANALISAR JOGOS 70%+"):
             st.success(f"✅ {len(df)} jogos com {limite_prob}%+ encontrados!")
             st.dataframe(df, use_container_width=True)
             pdf_bytes = gerar_pdf(df)
-            st.download_button("📄 Baixar PDF", pdf_bytes, "relatorio_v23.pdf", "application/pdf")
+            st.download_button("📄 Baixar PDF", pdf_bytes, "relatorio_v23_1.pdf", "application/pdf")
         else:
             st.info(f"Nenhum jogo bateu {limite_prob}%+ nos proximos {dias} dias.")
