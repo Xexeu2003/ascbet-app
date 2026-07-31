@@ -1,1 +1,6 @@
-pip install streamlit requests pandas fpdf scipy
+    streamlit
+    requests
+    pandas
+    numpy
+    scipy
+    fpdf2
