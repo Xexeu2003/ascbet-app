@@ -12,12 +12,12 @@ st.caption("Probabilidade 70%+ | API-Football Direta")
 # SUA CHAVE API-FOOTBALL DIRETA
 API_KEY = "e16821201501788a886ed8316ab5a06f"
 
-@st.cache_data(ttl=1800) # cache 30 min
+@st.cache_data(ttl=1800) # cache 30 min pra não gastar requisição
 def buscar_jogos_hoje():
     url = "https://v3.football.api-sports.io/fixtures"
     hoje = datetime.now().strftime("%Y-%m-%d")
     headers = {
-        "x-api-key": API_KEY # MUDOU: aqui é x-api-key e não X-RapidAPI-Key
+        "x-apisports-key": API_KEY # CORRIGIDO
     }
     params = {"date": hoje}
     
@@ -26,7 +26,7 @@ def buscar_jogos_hoje():
         if response.status_code == 200:
             return response.json()['response']
         else:
-            st.error(f"Erro API {response.status_code}: {response.json().get('errors')}")
+            st.error(f"Erro API {response.status_code}: {response.json()}")
             return []
     except Exception as e:
         st.error(f"Erro de conexão: {e}")
@@ -52,7 +52,7 @@ def gerar_pdf(aprovados):
     pdf.output("relatorio_ascbet.pdf")
 
 if st.button("🚀 Analisar Jogos de HOJE", use_container_width=True, type="primary"):
-    with st.spinner("Buscando e analisando jogos... 2-3 minutos"):
+    with st.spinner("Buscando e analisando jogos... Aguarde 2-3 minutos"):
         jogos = buscar_jogos_hoje()
         
         if not jogos:
