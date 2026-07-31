@@ -6,8 +6,8 @@ from datetime import datetime, timedelta
 from fpdf import FPDF
 from scipy.stats import poisson
 
-st.set_page_config(page_title="Analisador V23.1", layout="wide")
-st.title("🚀 Analisador V23.1 - Poisson + Força Ataque/Defesa")
+st.set_page_config(page_title="Analisador V23.2", layout="wide")
+st.title("🚀 Analisador V23.2 - Poisson + Força Ataque/Defesa")
 st.caption("Calculo Profissional: Gols, Cantos, Cartoes | Min 70%")
 
 # ================== CONFIG ==================
@@ -42,7 +42,6 @@ def calcular_stats_8jogos(time_id, league_id, tipo):
     jogos = api_call("get_events", {"team_id": time_id, "from": (datetime.now() - timedelta(days=120)).strftime("%Y-%m-%d"), "to": datetime.now().strftime("%Y-%m-%d")})
     if not isinstance(jogos, list): return {"gols_m":1.3, "gols_s":1.3, "cantos":9.5, "cartoes":3.8}
     
-    # SÓ PEGA JOGOS FINALIZADOS
     jogos_finalizados = [j for j in jogos if j.get('match_status') == 'Finished']
     ultimos_8 = jogos_finalizados[:8]
     
@@ -85,18 +84,25 @@ def calcular_probabilidade_final(casa_id, fora_id, league_id):
     stats_fora = calcular_stats_8jogos(fora_id, league_id, "away")
     
     tabela = api_call("get_standings", {"league_id": league_id})
-    if not isinstance(tabela, list): tabela = []
+    if not isinstance(tabela, list) or len(tabela) == 0: 
+        tabela = []
+    
     total_gols_liga = sum([safe_int(t.get('all_goals_for')) for t in tabela])
     total_jogos_liga = max(len(tabela), 1) * 2
-    media_liga = total_gols_liga / total_jogos_liga if total_jogos_liga > 0 else 2.6
+    media_liga = total_gols_liga / total_jogos_liga if total_jogos_liga > 0 and total_gols_liga > 0 else 2.6
     
-    atq_casa = stats_casa['gols_m'] / (media_liga / 2)
-    def_casa = stats_casa['gols_s'] / (media_liga / 2)
-    atq_fora = stats_fora['gols_m'] / (media_liga / 2)
-    def_fora = stats_fora['gols_s'] / (media_liga / 2)
+    # BLINDAGEM CONTRA DIVISAO POR ZERO
+    divisor = media_liga / 2
+    if divisor == 0:
+        divisor = 1.3
     
-    lambda_casa = atq_casa * def_fora * (media_liga / 2)
-    lambda_fora = atq_fora * def_casa * (media_liga / 2)
+    atq_casa = stats_casa['gols_m'] / divisor
+    def_casa = stats_casa['gols_s'] / divisor
+    atq_fora = stats_fora['gols_m'] / divisor
+    def_fora = stats_fora['gols_s'] / divisor
+    
+    lambda_casa = atq_casa * def_fora * divisor
+    lambda_fora = atq_fora * def_casa * divisor
     
     p_0_5, p_1_5, p_2_5 = calcular_poisson(lambda_casa, lambda_fora)
     p_cantos = 1 - poisson.cdf(8, (stats_casa['cantos'] + stats_fora['cantos']) / 2)
@@ -111,7 +117,7 @@ def gerar_pdf(df):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", "B", 16)
-    pdf.cell(200, 10, "Relatorio Analisador V23.1", ln=True, align="C")
+    pdf.cell(200, 10, "Relatorio Analisador V23.2", ln=True, align="C")
     pdf.set_font("Arial", "", 7)
     for i, row in df.iterrows():
         texto = f"{row['Data']} | {row['Liga']} R{row['Rodada']} | {row['Jogo']} | Prob:{row['Prob %']}% | 2.5:{row['Prob 2.5']}% | Cantos:{row['Prob Cantos']}% | Cartoes:{row['Prob Cartoes']}%"
@@ -164,6 +170,6 @@ if st.button("🚀 ANALISAR JOGOS 70%+"):
             st.success(f"✅ {len(df)} jogos com {limite_prob}%+ encontrados!")
             st.dataframe(df, use_container_width=True)
             pdf_bytes = gerar_pdf(df)
-            st.download_button("📄 Baixar PDF", pdf_bytes, "relatorio_v23_1.pdf", "application/pdf")
+            st.download_button("📄 Baixar PDF", pdf_bytes, "relatorio_v23_2.pdf", "application/pdf")
         else:
             st.info(f"Nenhum jogo bateu {limite_prob}%+ nos proximos {dias} dias.")
