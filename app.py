@@ -8,8 +8,7 @@ st.title("🚀 Analisador de Futebol V19 - Free Trial")
 
 # ================== CONFIG ==================
 API_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
-API_URL = "https://api.apifootball.com/"
-
+API_URL = "https://apiv2.apifootball.com/"
 # Suas Ligas Prioritárias - ID das ligas do API-Football
 LIGAS_IDS = {
     "Brasil Serie A": 462,
