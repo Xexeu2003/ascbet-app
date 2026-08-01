@@ -6,55 +6,29 @@ from fpdf import FPDF
 from scipy.stats import poisson
 import io
 
-st.set_page_config(page_title="Analisador V26.1", layout="wide")
-st.title("🚀 Analisador V26.1 - asc.bet PRO")
-st.caption("Horário Manaus UTC-4 | Bandeiras | Copiar Bilhete | CSV + PDF")
+st.set_page_config(page_title="Analisador V26.2", layout="wide")
+st.title("🚀 Analisador V26.2 - asc.bet PRO")
+st.caption("Horario Manaus UTC-4 | Bandeiras | Copiar Bilhete | CSV + PDF")
 
 API_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
 API_URL = "https://apiv2.apifootball.com/"
 
-BANDEIRAS = {
-    "Brasil": "🇧🇷", "Argentina": "🇦🇷", "Chile": "🇨🇱", "Colombia": "🇨🇴", "Uruguai": "🇺🇾", "Paraguai": "🇵🇾", "Ecuador": "🇪🇨",
-    "Inglaterra": "🏴󠁧󠁢󠁥󠁮󠁧󠁿", "Espanha": "🇪🇸", "Alemanha": "🇩🇪", "Italia": "🇮🇹", "Franca": "🇫🇷", "Portugal": "🇵🇹", "Holanda": "🇳🇱",
-    "Belgica": "🇧🇪", "Turquia": "🇹🇷", "Russia": "🇷🇺", "Ucrania": "🇺🇦", "Austria": "🇦🇹", "Suica": "🇨🇭", "Escocia": "🏴󠁧󠁢󠁳󠁣󠁴󠁿",
-    "Grecia": "🇬🇷", "EUA": "🇺🇸", "Mexico": "🇲🇽", "Polonia": "🇵🇱", "Noruega": "🇳🇴", "Panama": "🇵🇦"
-}
-
-LIGAS_IDS = {
-    "Brasil Serie A": 462, "Brasil Serie B": 463, "Brasil Serie C": 464, "Brasil Serie D": 465,
-    "Premier League": 148, "Championship": 149, "Champions League": 3, "Europa League": 4,
-    "Libertadores": 2, "Sulamericana": 7, "La Liga": 302, "La Liga 2": 303,
-    "Bundesliga": 266, "Bundesliga 2": 267, "Serie A Italia": 262, "Serie B Italia": 263,
-    "Ligue 1": 168, "Ligue 2": 169, "Eredivisie": 244, "Primeira Liga": 94,
-    "MLS": 253, "Liga MX": 206, "Argentina LPF": 10, "Colombia": 32,
-    "Chile": 29, "Uruguai": 116, "Paraguai": 83, "Ecuador": 37,
-    "Turquia": 482, "Holanda": 244, "Belgica": 144, "Portugal": 94,
-    "Russia": 406, "Ucrania": 488, "Austria": 132, "Suica": 444,
-    "Escocia": 172, "Grecia": 207, "I Liga": 207, "Eliteserien": 207, "Primera B": 29
-}
-
-PAISES = {
-    "Todos": list(LIGAS_IDS.values()),
-    "Brasil": [462, 463, 464, 465],
-    "Europa": [148, 149, 3, 4, 302, 303, 266, 267, 262, 263, 168, 169, 244, 94, 482, 144, 406, 488, 132, 444, 172, 207],
-    "Sul-America": [2, 7, 10, 32, 29, 116, 83, 37]
-}
-
 def pegar_bandeira(liga_nome):
-    if "Brasil" in liga_nome: return "🇧🇷"
-    if "Premier" in liga_nome or "England" in liga_nome: return "🏴󠁧󠁢󠁥󠁮󠁧󠁿"
-    if "La Liga" in liga_nome: return "🇪🇸"
-    if "Bundesliga" in liga_nome: return "🇩🇪"
-    if "Serie A" in liga_nome or "Italia" in liga_nome: return "🇮🇹"
-    if "Ligue" in liga_nome: return "🇫🇷"
-    if "Portugal" in liga_nome: return "🇵🇹"
-    if "Holanda" in liga_nome or "Eredivisie" in liga_nome: return "🇳🇱"
-    if "Argentina" in liga_nome: return "🇦🇷"
-    if "Chile" in liga_nome or "Primera B" in liga_nome: return "🇨🇱"
-    if "Polonia" in liga_nome or "I Liga" in liga_nome: return "🇵🇱"
-    if "Noruega" in liga_nome or "Eliteserien" in liga_nome: return "🇳🇴"
-    if "Mexico" in liga_nome or "LPF" in liga_nome: return "🇲🇽"
-    return "🌍"
+    liga = liga_nome.lower()
+    if "brasil" in liga: return "BR"
+    if "premier" in liga or "england" in liga or "championship" in liga: return "GB-ENG"
+    if "la liga" in liga or "espanha" in liga: return "ES"
+    if "bundesliga" in liga or "alemanha" in liga: return "DE"
+    if "serie a" in liga or "italia" in liga: return "IT"
+    if "ligue" in liga or "franca" in liga: return "FR"
+    if "portugal" in liga: return "PT"
+    if "holanda" in liga or "eredivisie" in liga: return "NL"
+    if "argentina" in liga: return "AR"
+    if "chile" in liga or "primera" in liga: return "CL"
+    if "polonia" in liga or "i liga" in liga: return "PL"
+    if "noruega" in liga or "eliteserien" in liga: return "NO"
+    if "mexico" in liga or "liga mx" in liga: return "MX"
+    return "GLB"
 
 def safe_int(valor):
     try: return int(valor) if valor is not None and valor!= '' else 0
@@ -146,7 +120,7 @@ def gerar_pdf(df, titulo="Completo"):
     pdf.set_text_color(0, 0, 0)
     pdf.set_font("Arial", "B", 14)
     data_hoje = (datetime.now() - timedelta(hours=4)).strftime('%d/%m/%Y %H:%M')
-    pdf.cell(0, 10, f"Relatorio Analisador V26.1 - {titulo} - {data_hoje}", ln=True, align="C")
+    pdf.cell(0, 10, f"Relatorio Analisador V26.2 - {titulo} - {data_hoje}", ln=True, align="C")
     pdf.ln(3)
     pdf.set_font("Arial", "B", 6)
     pdf.cell(22, 8, "Data", 1); pdf.cell(45, 8, "Liga", 1); pdf.cell(12, 8, "Rod", 1, 0, 'C')
@@ -182,16 +156,19 @@ def gerar_texto_bilhete(df_top3):
     texto = f"BILHETE asc.bet PRO {data}\n\n"
     for i, row in df_top3.iterrows():
         texto += f"{i+1}. {row['Jogo']} - Over 1.5 {row['Prob 1.5 FT']} - Conf: {row['Prob %']}%\n"
-    texto += f"\nBanca: 1% por jogo | GL 🍀"
+    texto += f"\nBanca: 1% por jogo | GL"
     return texto
 
-st.sidebar.header("⚙️ Filtros asc.bet")
-pais = st.sidebar.selectbox("🌍 Filtrar por País", list(PAISES.keys()))
+LIGAS_IDS = [462, 463, 464, 465, 148, 149, 3, 4, 2, 7, 302, 303, 266, 267, 262, 263, 168, 169, 244, 94, 253, 206, 10, 32, 29, 116, 83, 37, 482, 144, 406, 488, 132, 444, 172, 207]
+PAISES = {"Todos": LIGAS_IDS, "Brasil": [462, 463, 464, 465], "Europa": [148, 149, 3, 4, 302, 303, 266, 267, 262, 263, 168, 169, 244, 94, 482, 144, 406, 488, 132, 444, 172, 207], "Sul-America": [2, 7, 10, 32, 29, 116, 83, 37]}
+
+st.sidebar.header("Filtros asc.bet")
+pais = st.sidebar.selectbox("Filtrar por Pais", list(PAISES.keys()))
 dias = st.sidebar.slider("Buscar proximos X dias", 1, 7, 3)
 limite_prob = st.sidebar.slider("Probabilidade Minima %", 60, 90, 70)
 mostrar_top10 = st.sidebar.checkbox("Mostrar apenas TOP 10 na tela")
 
-if st.button("🚀 ANALISAR JOGOS 70%+"):
+if st.button("ANALISAR JOGOS 70%+"):
     with st.spinner("Analisando ligas..."):
         ligas_para_buscar = PAISES[pais]
         data_de = (datetime.now() - timedelta(hours=4)).strftime("%Y-%m-%d")
@@ -215,7 +192,8 @@ if st.button("🚀 ANALISAR JOGOS 70%+"):
                             pos_casa = next((t['overall_league_position'] for t in tabela if str(t.get('team_id')) == str(casa_id)), 'N/A')
                             pos_fora = next((t['overall_league_position'] for t in tabela if str(t.get('team_id')) == str(fora_id)), 'N/A')
                             data_manaus = converter_horario(jogo.get('match_date'), jogo.get('match_time'))
-                            liga_com_bandeira = f"{pegar_bandeira(jogo.get('league_name'))} {jogo.get('league_name')}"
+                            bandeira = pegar_bandeira(jogo.get('league_name'))
+                            liga_com_bandeira = f"[{bandeira}] {jogo.get('league_name')}"
                             resultados.append({
                                 "Data": data_manaus, "Liga": liga_com_bandeira, "Rodada": jogo.get('match_round', 'N/A'),
                                 "Jogo": f"{jogo.get('match_hometeam_name')} vs {jogo.get('match_awayteam_name')}",
@@ -233,9 +211,9 @@ if st.button("🚀 ANALISAR JOGOS 70%+"):
             df_top20 = df_completo.head(20)
             df_top3 = df_completo.head(3)
 
-            st.success(f"✅ {len(df_completo)} jogos com {limite_prob}%+ encontrados! Analisados: {jogos_analisados} | Pais: {pais}")
+            st.success(f"{len(df_completo)} jogos com {limite_prob}%+ encontrados! Analisados: {jogos_analisados} | Pais: {pais}")
 
-            tab1, tab2 = st.tabs(["📊 Todos 70%+", "🔥 Só 90%+"])
+            tab1, tab2 = st.tabs(["Todos 70%+", "So 90%+"])
             with tab1:
                 st.dataframe(df_tela.style.map(cor_prob, subset=['Prob %']), use_container_width=True)
             with tab2:
@@ -244,21 +222,19 @@ if st.button("🚀 ANALISAR JOGOS 70%+"):
                 else:
                     st.info("Nenhum jogo 90%+ encontrado hoje")
 
-            # BOTAO COPIAR BILHETE
             if not df_top3.empty:
                 texto_bilhete = gerar_texto_bilhete(df_top3)
-                st.text_area("📋 Copiar Bilhete Top 3:", texto_bilhete, height=150)
+                st.text_area("Copiar Bilhete Top 3:", texto_bilhete, height=150)
 
-            # EXPORT CSV
             csv = df_completo.to_csv(index=False).encode('utf-8')
-            st.download_button("📊 Baixar CSV", csv, "relatorio_v26_1.csv", "text/csv")
+            st.download_button("Baixar CSV", csv, "relatorio_v26_2.csv", "text/csv")
 
             col1, col2 = st.columns(2)
             with col1:
                 pdf_completo = gerar_pdf(df_completo, "Completo")
-                st.download_button("📄 Baixar PDF COMPLETO", pdf_completo, "relatorio_completo_v26_1.pdf", "application/pdf")
+                st.download_button("Baixar PDF COMPLETO", pdf_completo, "relatorio_completo_v26_2.pdf", "application/pdf")
             with col2:
                 pdf_top20 = gerar_pdf(df_top20, "TOP 20")
-                st.download_button("🏆 Baixar PDF TOP 20", pdf_top20, "relatorio_top20_v26_1.pdf", "application/pdf")
+                st.download_button("Baixar PDF TOP 20", pdf_top20, "relatorio_top20_v26_2.pdf", "application/pdf")
         else:
             st.warning(f"Nenhum jogo bateu {limite_prob}%+. Analisados: {jogos_analisados} jogos. Tente 65%")
