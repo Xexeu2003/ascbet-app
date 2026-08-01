@@ -6,9 +6,9 @@ from fpdf import FPDF
 from scipy.stats import poisson
 from collections import defaultdict
 
-st.set_page_config(page_title="Analisador V26.9", layout="wide")
-st.title("Analisador V26.9 - asc.bet PRO")
-st.caption("Horario Manaus UTC-4 | Filtro Multi-Liga + Ranking")
+st.set_page_config(page_title="Analisador V26.9.2", layout="wide")
+st.title("Analisador V26.9.2 - asc.bet PRO")
+st.caption("Horario Manaus UTC-4 | ATENCAO: Use datas de 2024/2025")
 
 API_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
 API_URL = "https://apiv2.apifootball.com/"
@@ -106,40 +106,32 @@ def gerar_pdf_backtest(df, stats, periodo, stake, odd):
         pdf.set_text_color(0, 0, 0)
     return bytes(pdf.output())
 
-# SUAS LIGAS ADICIONADAS COM ID DA API
 LIGAS_MAP = {
     462:"Brasileirao A", 463:"Brasileirao B", 148:"Premier League", 
-    302:"K League 1", # Coreia
-    310:"J1 League", # Japao
-    253:"Campeonato Chileno", 
-    339:"Allsvenskan", # Suecia
-    340:"Eliteserien", # Noruega
-    342:"Veikkausliiga", # Finlandia
-    271:"Superliga Chinesa",
-    350:"Besta deild karla", # Islandia
-    128:"Liga Profesional Argentina",
-    250:"Liga BetPlay Dimayor", # Colombia
-    344:"MLS", # USA
+    302:"K League 1", 310:"J1 League", 253:"Campeonato Chileno", 
+    339:"Allsvenskan", 340:"Eliteserien", 342:"Veikkausliiga",
+    271:"Superliga Chinesa", 350:"Besta deild karla", 
+    128:"Liga Profesional Argentina", 250:"Liga BetPlay Dimayor", 344:"MLS",
 }
 
-tab1, tab2 = st.tabs(["ANALISADOR AO VIVO", "BACKTEST PRO V26.9"])
+tab1, tab2 = st.tabs(["ANALISADOR AO VIVO", "BACKTEST PRO V26.9.2"])
 
 with tab2:
     st.header("BACKTEST PRO - FILTRO MULTI LIGA")
-    st.warning("Limite: 50 jogos. API gratis = 100 chamadas/dia")
+    st.error("ATENCAO: API Gratis so tem dados ate 2025. Nao use 2026")
 
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        data_inicio = st.date_input("Data Inicio", datetime.now().date() - timedelta(days=30)) # 30 dias pra pegar liga boa
+        data_inicio = st.date_input("Data Inicio", datetime(2025,7,1).date()) # PADRAO 2025
     with col2:
-        data_fim = st.date_input("Data Fim", datetime.now().date() - timedelta(days=1))
+        data_fim = st.date_input("Data Fim", datetime(2025,7,31).date()) # PADRAO 2025
     with col3:
         stake = st.number_input("Stake R$", 1, 1000, 10)
     with col4:
         odd_real = st.number_input("Odd Real da Casa", 1.10, 3.00, 1.90, 0.05)
     
     ligas_disponiveis = ["Todas"] + list(LIGAS_MAP.values())
-    ligas_selecionadas = st.multiselect("Selecionar Ligas", ligas_disponiveis, default=["Todas"]) # MULTISELECT
+    ligas_selecionadas = st.multiselect("Selecionar Ligas", ligas_disponiveis, default=["K League 1", "J1 League"])
     
     col5, col6 = st.columns(2)
     with col5:
@@ -159,12 +151,16 @@ with tab2:
             cache_times = {}
 
             if isinstance(jogos, list):
-                jogos_finalizados = [j for j in jogos if j.get('match_status') == 'Finished'][:50]
+                jogos_finalizados = [j for j in jogos if j.get('match_status') == 'Finished']
                 
-                # FILTRO MULTI LIGA
                 if "Todas" not in ligas_selecionadas:
                     ids_filtro = [k for k, v in LIGAS_MAP.items() if v in ligas_selecionadas]
                     jogos_finalizados = [j for j in jogos_finalizados if safe_int(j.get('league_id')) in ids_filtro]
+                
+                jogos_finalizados = jogos_finalizados[:50]
+                
+                if len(jogos_finalizados) == 0:
+                    st.error("Nenhum jogo encontrado. 1. Verifique se a data e 2024/2025  2. Selecione menos ligas")
                 
                 progress = st.progress(0)
                 for idx, jogo in enumerate(jogos_finalizados):
