@@ -4,10 +4,11 @@ import pandas as pd
 from datetime import datetime, timedelta
 from fpdf import FPDF
 from scipy.stats import poisson
+import io
 
-st.set_page_config(page_title="Analisador V25.2", layout="wide")
-st.title("🚀 Analisador V25.2 - asc.bet PRO")
-st.caption("Horário Manaus UTC-4 | Logo Oficial | 40 Ligas + 2 PDFs")
+st.set_page_config(page_title="Analisador V26.0", layout="wide")
+st.title("🚀 Analisador V26.0 - asc.bet PRO")
+st.caption("Horário Manaus UTC-4 | Filtro por País | Marca D'agua | CSV + PDF")
 
 API_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
 API_URL = "https://apiv2.apifootball.com/"
@@ -25,14 +26,21 @@ LIGAS_IDS = {
     "Escocia": 172, "Grecia": 207
 }
 
+PAISES = {
+    "Todos": list(LIGAS_IDS.values()),
+    "Brasil": [462, 463, 464, 465],
+    "Europa": [148, 149, 3, 4, 302, 303, 266, 267, 262, 263, 168, 169, 244, 94, 482, 144, 406, 488, 132, 444, 172, 207],
+    "Sul-America": [2, 7, 10, 32, 29, 116, 83, 37]
+}
+
 def safe_int(valor):
-    try: return int(valor) if valor is not None and valor != '' else 0
+    try: return int(valor) if valor is not None and valor!= '' else 0
     except: return 0
 
 def converter_horario(data_str, hora_str):
     try:
         dt_utc = datetime.strptime(f"{data_str} {hora_str}", "%Y-%m-%d %H:%M")
-        dt_manaus = dt_utc - timedelta(hours=4) # MANAUS = UTC-4
+        dt_manaus = dt_utc - timedelta(hours=4)
         return dt_manaus.strftime("%d/%m %H:%M")
     except: return f"{data_str} {hora_str}"
 
@@ -103,20 +111,32 @@ def cor_prob(val):
 def gerar_pdf(df, titulo="Completo"):
     pdf = FPDF(orientation='L')
     pdf.add_page()
+
+    # MARCA D'AGUA
+    pdf.set_font("Arial", "B", 50)
+    pdf.set_text_color(230, 230, 230)
+    pdf.rotate(45)
+    pdf.text(50, 150, "asc.bet PRO")
+    pdf.rotate(0)
+    pdf.set_text_color(0, 0, 0)
+
     pdf.set_font("Arial", "B", 22)
     pdf.set_text_color(0, 128, 0)
     pdf.cell(0, 12, "asc.bet", ln=True, align="C")
     pdf.set_text_color(0, 0, 0)
+
     pdf.set_font("Arial", "B", 14)
-    data_hoje = (datetime.now() - timedelta(hours=4)).strftime('%d/%m/%Y %H:%M') # HORARIO MANAUS
-    pdf.cell(0, 10, f"Relatorio Analisador V25.2 - {titulo} - {data_hoje}", ln=True, align="C")
+    data_hoje = (datetime.now() - timedelta(hours=4)).strftime('%d/%m/%Y %H:%M')
+    pdf.cell(0, 10, f"Relatorio Analisador V26.0 - {titulo} - {data_hoje}", ln=True, align="C")
     pdf.ln(3)
+
     pdf.set_font("Arial", "B", 6)
     pdf.cell(22, 8, "Data", 1); pdf.cell(40, 8, "Liga", 1); pdf.cell(12, 8, "Rod", 1, 0, 'C')
     pdf.cell(75, 8, "Jogo", 1); pdf.cell(18, 8, "Pos", 1, 0, 'C'); pdf.cell(15, 8, "H2H", 1, 0, 'C')
     pdf.cell(15, 8, "GC U8", 1, 0, 'C'); pdf.cell(15, 8, "GF U8", 1, 0, 'C')
     pdf.cell(18, 8, "Prob 0.5", 1, 0, 'C'); pdf.cell(18, 8, "Prob 1.5", 1, 0, 'C')
     pdf.cell(18, 8, "Prob 2.5", 1, 0, 'C'); pdf.cell(15, 8, "Prob %", 1, 1, 'C')
+
     pdf.set_font("Arial", "", 6)
     for i, row in df.iterrows():
         fill = True if i % 2 == 0 else False
@@ -141,12 +161,14 @@ def gerar_pdf(df, titulo="Completo"):
     return bytes(pdf.output())
 
 st.sidebar.header("⚙️ Filtros asc.bet")
+pais = st.sidebar.selectbox("🌍 Filtrar por País", list(PAISES.keys()))
 dias = st.sidebar.slider("Buscar proximos X dias", 1, 7, 3)
 limite_prob = st.sidebar.slider("Probabilidade Minima %", 60, 90, 70)
 mostrar_top10 = st.sidebar.checkbox("Mostrar apenas TOP 10 na tela")
 
 if st.button("🚀 ANALISAR JOGOS 70%+"):
-    with st.spinner("Analisando 40 ligas..."):
+    with st.spinner("Analisando ligas..."):
+        ligas_para_buscar = PAISES[pais]
         data_de = (datetime.now() - timedelta(hours=4)).strftime("%Y-%m-%d")
         data_ate = ((datetime.now() - timedelta(hours=4)) + timedelta(days=dias)).strftime("%Y-%m-%d")
         jogos = api_call("get_events", {"from": data_de, "to": data_ate})
@@ -156,7 +178,7 @@ if st.button("🚀 ANALISAR JOGOS 70%+"):
         if isinstance(jogos, list):
             total_jogos = len(jogos)
             for idx, jogo in enumerate(jogos):
-                if safe_int(jogo.get('league_id')) in LIGAS_IDS.values():
+                if safe_int(jogo.get('league_id')) in ligas_para_buscar: # FILTRO PAIS
                     jogos_analisados += 1
                     try:
                         casa_id = jogo.get('match_hometeam_id')
@@ -177,18 +199,34 @@ if st.button("🚀 ANALISAR JOGOS 70%+"):
                             })
                     except: continue
                 progress.progress((idx + 1) / total_jogos)
+
         if resultados:
             df_completo = pd.DataFrame(resultados).sort_values("Prob %", ascending=False)
+            df_90 = df_completo[df_completo['Prob %'] >= 90] # ABA 90%+
             df_tela = df_completo.head(10) if mostrar_top10 else df_completo
             df_top20 = df_completo.head(20)
-            st.success(f"✅ {len(df_completo)} jogos com {limite_prob}%+ encontrados! Analisados: {jogos_analisados}")
-            st.dataframe(df_tela.style.map(cor_prob, subset=['Prob %']), use_container_width=True)
+
+            st.success(f"✅ {len(df_completo)} jogos com {limite_prob}%+ encontrados! Analisados: {jogos_analisados} | Pais: {pais}")
+
+            tab1, tab2 = st.tabs(["📊 Todos 70%+", "🔥 Só 90%+"])
+            with tab1:
+                st.dataframe(df_tela.style.map(cor_prob, subset=['Prob %']), use_container_width=True)
+            with tab2:
+                if not df_90.empty:
+                    st.dataframe(df_90.style.map(cor_prob, subset=['Prob %']), use_container_width=True)
+                else:
+                    st.info("Nenhum jogo 90%+ encontrado hoje")
+
+            # EXPORT CSV
+            csv = df_completo.to_csv(index=False).encode('utf-8')
+            st.download_button("📊 Baixar CSV", csv, "relatorio_v26_0.csv", "text/csv")
+
             col1, col2 = st.columns(2)
             with col1:
                 pdf_completo = gerar_pdf(df_completo, "Completo")
-                st.download_button("📄 Baixar PDF COMPLETO", pdf_completo, "relatorio_completo_v25_2.pdf", "application/pdf")
+                st.download_button("📄 Baixar PDF COMPLETO", pdf_completo, "relatorio_completo_v26_0.pdf", "application/pdf")
             with col2:
                 pdf_top20 = gerar_pdf(df_top20, "TOP 20")
-                st.download_button("🏆 Baixar PDF TOP 20", pdf_top20, "relatorio_top20_v25_2.pdf", "application/pdf")
+                st.download_button("🏆 Baixar PDF TOP 20", pdf_top20, "relatorio_top20_v26_0.pdf", "application/pdf")
         else:
             st.warning(f"Nenhum jogo bateu {limite_prob}%+. Analisados: {jogos_analisados} jogos. Tente 65%")
