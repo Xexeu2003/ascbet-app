@@ -4,15 +4,13 @@ import pandas as pd
 from datetime import datetime, timedelta
 from fpdf import FPDF
 from scipy.stats import poisson
-import pytz # PARA HORARIO DE MANAUS
 
-st.set_page_config(page_title="Analisador V25.1", layout="wide")
-st.title("🚀 Analisador V25.1 - asc.bet PRO")
-st.caption("Horário Manaus | Logo Oficial | 40 Ligas + 2 PDFs + 0.5 + 1.5 + 2.5")
+st.set_page_config(page_title="Analisador V25.2", layout="wide")
+st.title("🚀 Analisador V25.2 - asc.bet PRO")
+st.caption("Horário Manaus UTC-4 | Logo Oficial | 40 Ligas + 2 PDFs")
 
 API_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
 API_URL = "https://apiv2.apifootball.com/"
-TIMEZONE_MANAUS = pytz.timezone('America/Manaus') # FUSO MANAUS UTC-4
 
 LIGAS_IDS = {
     "Brasil Serie A": 462, "Brasil Serie B": 463, "Brasil Serie C": 464, "Brasil Serie D": 465,
@@ -34,8 +32,7 @@ def safe_int(valor):
 def converter_horario(data_str, hora_str):
     try:
         dt_utc = datetime.strptime(f"{data_str} {hora_str}", "%Y-%m-%d %H:%M")
-        dt_utc = pytz.utc.localize(dt_utc)
-        dt_manaus = dt_utc.astimezone(TIMEZONE_MANAUS)
+        dt_manaus = dt_utc - timedelta(hours=4) # MANAUS = UTC-4
         return dt_manaus.strftime("%d/%m %H:%M")
     except: return f"{data_str} {hora_str}"
 
@@ -99,42 +96,35 @@ def calcular_probabilidade_final(casa_id, fora_id, league_id):
     return prob_final, round(p_0_5*100), round(p_1_5*100), round(p_2_5*100), media_h2h, stats_casa, stats_fora
 
 def cor_prob(val):
-    if val >= 90: return 'background-color: #d4edda; color: #155724' # Verde
-    elif val >= 80: return 'background-color: #cce5ff; color: #004085' # Azul
-    else: return 'background-color: #fff3cd; color: #856404' # Amarelo
+    if val >= 90: return 'background-color: #d4edda; color: #155724'
+    elif val >= 80: return 'background-color: #cce5ff; color: #004085'
+    else: return 'background-color: #fff3cd; color: #856404'
 
 def gerar_pdf(df, titulo="Completo"):
     pdf = FPDF(orientation='L')
     pdf.add_page()
-    
-    # LOGO ASC.BET CORRIGIDO SEM EMOJI
     pdf.set_font("Arial", "B", 22)
-    pdf.set_text_color(0, 128, 0) # Verde asc.bet
+    pdf.set_text_color(0, 128, 0)
     pdf.cell(0, 12, "asc.bet", ln=True, align="C")
     pdf.set_text_color(0, 0, 0)
-    
     pdf.set_font("Arial", "B", 14)
-    data_hoje = datetime.now(TIMEZONE_MANAUS).strftime('%d/%m/%Y %H:%M')
-    pdf.cell(0, 10, f"Relatorio Analisador V25.1 - {titulo} - {data_hoje}", ln=True, align="C")
+    data_hoje = (datetime.now() - timedelta(hours=4)).strftime('%d/%m/%Y %H:%M') # HORARIO MANAUS
+    pdf.cell(0, 10, f"Relatorio Analisador V25.2 - {titulo} - {data_hoje}", ln=True, align="C")
     pdf.ln(3)
-    
     pdf.set_font("Arial", "B", 6)
     pdf.cell(22, 8, "Data", 1); pdf.cell(40, 8, "Liga", 1); pdf.cell(12, 8, "Rod", 1, 0, 'C')
     pdf.cell(75, 8, "Jogo", 1); pdf.cell(18, 8, "Pos", 1, 0, 'C'); pdf.cell(15, 8, "H2H", 1, 0, 'C')
     pdf.cell(15, 8, "GC U8", 1, 0, 'C'); pdf.cell(15, 8, "GF U8", 1, 0, 'C')
     pdf.cell(18, 8, "Prob 0.5", 1, 0, 'C'); pdf.cell(18, 8, "Prob 1.5", 1, 0, 'C')
     pdf.cell(18, 8, "Prob 2.5", 1, 0, 'C'); pdf.cell(15, 8, "Prob %", 1, 1, 'C')
-    
     pdf.set_font("Arial", "", 6)
     for i, row in df.iterrows():
         fill = True if i % 2 == 0 else False
         if fill: pdf.set_fill_color(240, 240, 240)
-        
         prob = row.get('Prob %', 0)
         if prob >= 90: pdf.set_text_color(0, 128, 0)
         elif prob >= 80: pdf.set_text_color(0, 0, 255)
         else: pdf.set_text_color(255, 140, 0)
-        
         pdf.cell(22, 6, str(row.get('Data','N/A')).encode('latin-1', 'replace').decode('latin-1'), 1, 0, '', fill)
         pdf.cell(40, 6, str(row.get('Liga','N/A'))[:22].encode('latin-1', 'replace').decode('latin-1'), 1, 0, '', fill)
         pdf.cell(12, 6, str(row.get('Rodada','N/A')), 1, 0, 'C', fill)
@@ -148,7 +138,6 @@ def gerar_pdf(df, titulo="Completo"):
         pdf.cell(18, 6, str(row.get('Prob 2.5 FT','0%')), 1, 0, 'C', fill)
         pdf.cell(15, 6, str(prob)+"%", 1, 1, 'C', fill)
         pdf.set_text_color(0, 0, 0)
-    
     return bytes(pdf.output())
 
 st.sidebar.header("⚙️ Filtros asc.bet")
@@ -157,14 +146,13 @@ limite_prob = st.sidebar.slider("Probabilidade Minima %", 60, 90, 70)
 mostrar_top10 = st.sidebar.checkbox("Mostrar apenas TOP 10 na tela")
 
 if st.button("🚀 ANALISAR JOGOS 70%+"):
-    with st.spinner("Analisando 40 ligas... Isso pode demorar 2-3 min na primeira vez"):
-        data_de = datetime.now(TIMEZONE_MANAUS).strftime("%Y-%m-%d")
-        data_ate = (datetime.now(TIMEZONE_MANAUS) + timedelta(days=dias)).strftime("%Y-%m-%d")
+    with st.spinner("Analisando 40 ligas..."):
+        data_de = (datetime.now() - timedelta(hours=4)).strftime("%Y-%m-%d")
+        data_ate = ((datetime.now() - timedelta(hours=4)) + timedelta(days=dias)).strftime("%Y-%m-%d")
         jogos = api_call("get_events", {"from": data_de, "to": data_ate})
         resultados = []
         jogos_analisados = 0
         progress = st.progress(0)
-        
         if isinstance(jogos, list):
             total_jogos = len(jogos)
             for idx, jogo in enumerate(jogos):
@@ -181,40 +169,26 @@ if st.button("🚀 ANALISAR JOGOS 70%+"):
                             pos_fora = next((t['overall_league_position'] for t in tabela if str(t.get('team_id')) == str(fora_id)), 'N/A')
                             data_manaus = converter_horario(jogo.get('match_date'), jogo.get('match_time'))
                             resultados.append({
-                                "Data": data_manaus,
-                                "Liga": jogo.get('league_name'),
-                                "Rodada": jogo.get('match_round', 'N/A'),
+                                "Data": data_manaus, "Liga": jogo.get('league_name'), "Rodada": jogo.get('match_round', 'N/A'),
                                 "Jogo": f"{jogo.get('match_hometeam_name')} vs {jogo.get('match_awayteam_name')}",
-                                "Pos": f"{pos_casa} vs {pos_fora}",
-                                "Gols Casa U8": f"{stats_casa['gols_m']:.2f}",
-                                "Gols Fora U8": f"{stats_fora['gols_m']:.2f}",
-                                "Media H2H 5J": media_h2h,
-                                "Prob 0.5 HT": f"{p_0_5}%",
-                                "Prob 1.5 FT": f"{p_1_5}%",
-                                "Prob 2.5 FT": f"{p_2_5}%",
-                                "Prob %": prob_final
+                                "Pos": f"{pos_casa} vs {pos_fora}", "Gols Casa U8": f"{stats_casa['gols_m']:.2f}",
+                                "Gols Fora U8": f"{stats_fora['gols_m']:.2f}", "Media H2H 5J": media_h2h,
+                                "Prob 0.5 HT": f"{p_0_5}%", "Prob 1.5 FT": f"{p_1_5}%", "Prob 2.5 FT": f"{p_2_5}%", "Prob %": prob_final
                             })
                     except: continue
                 progress.progress((idx + 1) / total_jogos)
-        
         if resultados:
             df_completo = pd.DataFrame(resultados).sort_values("Prob %", ascending=False)
             df_tela = df_completo.head(10) if mostrar_top10 else df_completo
             df_top20 = df_completo.head(20)
-            
             st.success(f"✅ {len(df_completo)} jogos com {limite_prob}%+ encontrados! Analisados: {jogos_analisados}")
-            
-            st.dataframe(
-                df_tela.style.map(cor_prob, subset=['Prob %']),
-                use_container_width=True
-            )
-            
+            st.dataframe(df_tela.style.map(cor_prob, subset=['Prob %']), use_container_width=True)
             col1, col2 = st.columns(2)
             with col1:
                 pdf_completo = gerar_pdf(df_completo, "Completo")
-                st.download_button("📄 Baixar PDF COMPLETO", pdf_completo, "relatorio_completo_v25_1.pdf", "application/pdf")
+                st.download_button("📄 Baixar PDF COMPLETO", pdf_completo, "relatorio_completo_v25_2.pdf", "application/pdf")
             with col2:
                 pdf_top20 = gerar_pdf(df_top20, "TOP 20")
-                st.download_button("🏆 Baixar PDF TOP 20", pdf_top20, "relatorio_top20_v25_1.pdf", "application/pdf")
+                st.download_button("🏆 Baixar PDF TOP 20", pdf_top20, "relatorio_top20_v25_2.pdf", "application/pdf")
         else:
             st.warning(f"Nenhum jogo bateu {limite_prob}%+. Analisados: {jogos_analisados} jogos. Tente 65%")
