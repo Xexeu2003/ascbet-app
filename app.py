@@ -3,10 +3,11 @@ import requests
 import pandas as pd
 from datetime import datetime, timedelta
 from scipy.stats import poisson
+from collections import defaultdict
 
-st.set_page_config(page_title="Analisador V26.6", layout="wide")
-st.title("Analisador V26.6 - asc.bet")
-st.caption("Horario Manaus UTC-4 | 40 Ligas")
+st.set_page_config(page_title="Analisador V26.6.1", layout="wide")
+st.title("Analisador V26.6.1 - asc.bet PRO")
+st.caption("Horario Manaus UTC-4 | 40 Ligas | Leve + ROI + Ranking")
 
 API_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
 API_URL = "https://apiv2.apifootball.com/"
@@ -27,7 +28,7 @@ def calcular_stats_5jogos(time_id, tipo):
     jogos = api_call("get_events", {"team_id": time_id, "from": (datetime.now() - timedelta(days=60)).strftime("%Y-%m-%d"), "to": datetime.now().strftime("%Y-%m-%d")})
     if not isinstance(jogos, list): return {"gols_m":1.5, "gols_s":1.5}
     jogos_finalizados = [j for j in jogos if j.get('match_status') == 'Finished']
-    ultimos_5 = jogos_finalizados[:5] # V26.6 usava 5 jogos
+    ultimos_5 = jogos_finalizados[:5]
     gols_m = gols_s = jogos_contados = 0
     for j in ultimos_5:
         is_home = str(j.get('match_hometeam_id')) == str(time_id)
@@ -47,7 +48,7 @@ def calcular_poisson(lambda_casa, lambda_fora):
 def calcular_probabilidade_final(casa_id, fora_id, league_id):
     stats_casa = calcular_stats_5jogos(casa_id, "home")
     stats_fora = calcular_stats_5jogos(fora_id, "away")
-    media_liga = 2.6 # V26.6 usava 2.6
+    media_liga = 2.6
     divisor = media_liga / 2
     atq_casa = stats_casa['gols_m'] / divisor
     def_casa = stats_casa['gols_s'] / divisor
@@ -56,7 +57,7 @@ def calcular_probabilidade_final(casa_id, fora_id, league_id):
     lambda_casa = atq_casa * def_fora * divisor
     lambda_fora = atq_fora * def_casa * divisor
     p_0_5, p_1_5, p_2_5 = calcular_poisson(lambda_casa, lambda_fora)
-    prob_final = (p_2_5 * 60) + (p_1_5 * 30) + (p_0_5 * 10) # Peso diferente V26.6
+    prob_final = (p_2_5 * 60) + (p_1_5 * 30) + (p_0_5 * 10)
     prob_final = min(round(prob_final), 99)
     return prob_final, round(p_0_5*100), round(p_1_5*100), round(p_2_5*100)
 
@@ -76,18 +77,18 @@ LIGAS_MAP = {
     271:"Superliga Chinesa", 128:"Liga Profesional Argentina", 250:"Liga BetPlay Dimayor"
 }
 
-tab1, tab2 = st.tabs(["ANALISADOR AO VIVO", "BACKTEST"])
+tab1, tab2 = st.tabs(["ANALISADOR AO VIVO", "BACKTEST PRO"])
 
 # ABA 1: AO VIVO
 with tab1:
-    st.header("ANALISADOR AO VIVO - V26.6")
+    st.header("ANALISADOR AO VIVO - V26.6.1")
     
     col1, col2 = st.columns(2)
     with col1:
         ligas_ao_vivo = st.multiselect(
             "Selecionar Ligas", 
             list(LIGAS_MAP.values()), 
-            default=["K League 1", "J1 League", "Brasileirao A", "Premier League"]
+            default=["K League 1", "J1 League", "Besta deild karla"]
         )
     with col2:
         filtro_prob_vivo = st.slider("Filtro Prob Minima", 70, 95, 80)
@@ -111,6 +112,7 @@ with tab1:
                             prob_final, p_0_5, p_1_5, p_2_5 = calcular_probabilidade_final(casa_id, fora_id, league_id)
                             
                             if p_1_5 >= filtro_prob_vivo:
+                                gols_ft = safe_int(jogo.get('match_hometeam_score')) + safe_int(jogo.get('match_awayteam_score'))
                                 jogos_ao_vivo.append({
                                     "Hora": jogo.get('match_time'),
                                     "Liga": LIGAS_MAP.get(league_id),
@@ -118,30 +120,46 @@ with tab1:
                                     "Placar": f"{jogo.get('match_hometeam_score')} x {jogo.get('match_awayteam_score')}",
                                     "Minuto": jogo.get('match_status'),
                                     "Prob 1.5": p_1_5,
-                                    "Prob 2.5": p_2_5
+                                    "Prob 2.5": p_2_5,
+                                    "Gols FT": gols_ft,
+                                    "1.5FT": "GREEN" if gols_ft >= 2 else "AGUARDANDO"
                                 })
                         except: continue
             
             if jogos_ao_vivo:
                 df_vivo = pd.DataFrame(jogos_ao_vivo).sort_values("Prob 1.5", ascending=False)
                 st.success(f"ENCONTRADOS {len(df_vivo)} JOGOS")
-                st.dataframe(df_vivo, use_container_width=True)
+                
+                def color_result(val):
+                    if val == 'GREEN': return 'background-color: #d4edda; color: #155724; font-weight: bold'
+                    elif val == 'AGUARDANDO': return 'background-color: #fff3cd; color: #856404'
+                    else: return ''
+                
+                def color_prob(val):
+                    if val >= 90: return 'background-color: #28a745; color: white; font-weight: bold'
+                    elif val >= 85: return 'background-color: #ffc107; color: black; font-weight: bold'
+                    else: return ''
+                
+                st.dataframe(df_vivo.style.map(color_result, subset=['1.5FT']).map(color_prob, subset=['Prob 1.5', 'Prob 2.5']), use_container_width=True)
             else:
                 st.warning("Nenhum jogo ao vivo encontrado")
 
-# ABA 2: BACKTEST
+# ABA 2: BACKTEST COM ROI + RANKING
 with tab2:
-    st.header("BACKTEST - V26.6")
+    st.header("BACKTEST PRO - V26.6.1")
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         data_inicio = st.date_input("Data Inicio", datetime(2025,8,1).date())
     with col2:
         data_fim = st.date_input("Data Fim", datetime(2025,9,30).date())
     with col3:
-        limite_bt = st.slider("Prob Minima", 60, 90, 70)
+        stake = st.number_input("Stake R$", 1, 1000, 10)
+    with col4:
+        odd_real = st.number_input("Odd", 1.10, 3.00, 1.90, 0.05)
     
     ligas_selecionadas = st.multiselect("Selecionar Ligas", list(LIGAS_MAP.values()), default=["K League 1", "J1 League"])
+    limite_bt = st.slider("Prob Minima", 60, 90, 70)
 
     if st.button("RODAR BACKTEST"):
         with st.spinner("Rodando backtest..."):
@@ -149,7 +167,8 @@ with tab2:
             data_ate = data_fim.strftime("%Y-%m-%d")
 
             resultados_bt = []
-            total = green = 0
+            stats = {"0.5HT": {"total":0, "green":0}, "1.5FT": {"total":0, "green":0}, "2.5FT": {"total":0, "green":0}}
+            ranking_ligas = defaultdict(lambda: {"total":0, "green":0})
 
             ids_filtro = [k for k, v in LIGAS_MAP.items() if v in ligas_selecionadas]
             
@@ -157,36 +176,75 @@ with tab2:
                 jogos = api_call("get_events", {"league_id": league_id, "from": data_de, "to": data_ate})
                 
                 if not isinstance(jogos, list): continue
-                jogos_finalizados = [j for j in jogos if j.get('match_status') == 'Finished'][:20] # V26.6 pegava 20
+                jogos_finalizados = [j for j in jogos if j.get('match_status') == 'Finished'][:20]
 
                 for jogo in jogos_finalizados:
                     try:
                         casa_id = jogo.get('match_hometeam_id')
                         fora_id = jogo.get('match_awayteam_id')
+                        nome_liga = LIGAS_MAP.get(league_id, "Outra")
                         prob_final, p_0_5, p_1_5, p_2_5 = calcular_probabilidade_final(casa_id, fora_id, league_id)
 
                         if prob_final >= limite_bt:
+                            gols_ht = safe_int(jogo.get('match_hometeam_score_ht')) + safe_int(jogo.get('match_awayteam_score_ht'))
                             gols_ft = safe_int(jogo.get('match_hometeam_score')) + safe_int(jogo.get('match_awayteam_score'))
+
+                            green_05 = gols_ht >= 1
                             green_15 = gols_ft >= 2
-                            
-                            total += 1
-                            if green_15: green += 1
+                            green_25 = gols_ft >= 3
+
+                            if p_0_5 >= limite_bt:
+                                stats["0.5HT"]["total"] += 1
+                                if green_05: stats["0.5HT"]["green"] += 1
+                            if p_1_5 >= limite_bt:
+                                stats["1.5FT"]["total"] += 1
+                                if green_15: stats["1.5FT"]["green"] += 1
+                                ranking_ligas[nome_liga]["total"] += 1
+                                if green_15: ranking_ligas[nome_liga]["green"] += 1
+                            if p_2_5 >= limite_bt:
+                                stats["2.5FT"]["total"] += 1
+                                if green_25: stats["2.5FT"]["green"] += 1
 
                             resultados_bt.append({
                                 "Data": jogo.get('match_date'),
                                 "Jogo": f"{jogo.get('match_hometeam_name')} vs {jogo.get('match_awayteam_name')}",
-                                "Liga": LIGAS_MAP.get(league_id),
-                                "Prob 1.5": p_1_5,
+                                "Liga": nome_liga,
+                                "Prob 1.5": p_1_5, "Prob 2.5": p_2_5,
                                 "FT": gols_ft,
-                                "Resultado": "GREEN" if green_15 else "RED"
+                                "1.5FT": "GREEN" if green_15 else "RED"
                             })
                     except: continue
 
             if resultados_bt:
                 df_bt = pd.DataFrame(resultados_bt)
-                taxa = (green / total * 100) if total > 0 else 0
                 
-                st.metric("Taxa 1.5FT", f"{taxa:.1f}%", f"{green}/{total}")
-                st.dataframe(df_bt, use_container_width=True)
+                # ROI
+                taxa_15 = (stats['1.5FT']['green'] / stats['1.5FT']['total'] * 100) if stats['1.5FT']['total'] > 0 else 0
+                total_apostado = stats['1.5FT']['total'] * stake
+                lucro_green = stats['1.5FT']['green'] * stake * (odd_real - 1)
+                lucro_red = (stats['1.5FT']['total'] - stats['1.5FT']['green']) * stake
+                lucro = lucro_green - lucro_red
+                roi = (lucro / total_apostado) * 100 if total_apostado > 0 else 0
+                
+                col1, col2, col3 = st.columns(3)
+                col1.metric("Taxa 1.5FT", f"{taxa_15:.1f}%", f"{stats['1.5FT']['green']}/{stats['1.5FT']['total']}")
+                col2.metric("ROI 1.5FT", f"{roi:.1f}%", f"R${lucro:.2f}")
+                col3.metric("Lucro", f"R${lucro:.2f}")
+
+                # RANKING
+                st.subheader("RANKING DE LIGAS - 1.5FT")
+                df_ranking = pd.DataFrame([
+                    {"Liga": liga, "Jogos": dados["total"], "GREEN": dados["green"], "Taxa": (dados["green"]/dados["total"]*100 if dados["total"]>0 else 0)}
+                    for liga, dados in ranking_ligas.items()
+                ]).sort_values("Taxa", ascending=False)
+                st.dataframe(df_ranking.style.format({"Taxa": "{:.1f}%"}), use_container_width=True)
+
+                # TABELA COM CORES
+                def color_result(val):
+                    if val == 'GREEN': return 'background-color: #d4edda; color: #155724; font-weight: bold'
+                    elif val == 'RED': return 'background-color: #f8d7da; color: #721c24; font-weight: bold'
+                    else: return ''
+                
+                st.dataframe(df_bt.style.map(color_result, subset=['1.5FT']), use_container_width=True)
             else:
                 st.error("Nenhum jogo encontrado")
