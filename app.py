@@ -6,9 +6,9 @@ from fpdf import FPDF
 from scipy.stats import poisson
 from collections import defaultdict
 
-st.set_page_config(page_title="Analisador V26.9.3", layout="wide")
-st.title("Analisador V26.9.3 - asc.bet PRO")
-st.caption("Horario Manaus UTC-4 | Busca por Liga Direto")
+st.set_page_config(page_title="Analisador V26.9.4", layout="wide")
+st.title("Analisador V26.9.4 - asc.bet PRO")
+st.caption("Horario Manaus UTC-4 | ROI Corrigido")
 
 API_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
 API_URL = "https://apiv2.apifootball.com/"
@@ -65,47 +65,6 @@ def calcular_probabilidade_final(casa_id, fora_id, league_id):
     prob_final = min(round(prob_final), 99)
     return prob_final, round(p_0_5*100), round(p_1_5*100), round(p_2_5*100)
 
-def gerar_pdf_backtest(df, stats, periodo, stake, odd):
-    pdf = FPDF(orientation='L')
-    pdf.add_page()
-    pdf.set_font("Arial", "B", 50)
-    pdf.set_text_color(230, 230, 230)
-    pdf.rotate(45)
-    pdf.text(50, 150, "asc.bet PRO")
-    pdf.rotate(0)
-    pdf.set_text_color(0, 0, 0)
-    pdf.set_font("Arial", "B", 22)
-    pdf.set_text_color(0, 128, 0)
-    pdf.cell(0, 12, "asc.bet - RELATORIO BACKTEST", ln=True, align="C")
-    pdf.set_text_color(0, 0, 0)
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 10, f"Periodo: {periodo} | Stake: R${stake} | Odd: {odd}", ln=True, align="C")
-    
-    total_apostado_15 = stats['1.5FT']['total'] * stake
-    lucro = (stats['1.5FT']['green'] * stake * (odd - 1)) - (stats['1.5FT']['total'] * stake)
-    roi = (lucro / total_apostado_15) * 100 if total_apostado_15 > 0 else 0
-    pdf.cell(0, 8, f"ROI 1.5FT: {roi:.1f}% | Lucro: R${lucro:.2f} | Taxa: {stats['1.5FT']['taxa']:.1f}%", ln=True, align="C")
-    pdf.ln(3)
-    
-    pdf.set_font("Arial", "B", 6)
-    pdf.cell(22, 6, "Data", 1); pdf.cell(60, 6, "Jogo", 1); pdf.cell(25, 6, "Liga", 1); pdf.cell(15, 6, "Prob 1.5", 1, 0, 'C')
-    pdf.cell(10, 6, "FT", 1, 0, 'C'); pdf.cell(15, 6, "1.5FT", 1, 1, 'C')
-    
-    pdf.set_font("Arial", "", 6)
-    for i, row in df.iterrows():
-        fill = True if i % 2 == 0 else False
-        if fill: pdf.set_fill_color(240, 240, 240)
-        if row.get('1.5FT') == 'GREEN': pdf.set_text_color(0, 128, 0)
-        else: pdf.set_text_color(200, 0, 0)
-        pdf.cell(22, 5, str(row.get('Data','N/A')), 1, 0, '', fill)
-        pdf.cell(60, 5, str(row.get('Jogo','N/A'))[:28], 1, 0, '', fill)
-        pdf.cell(25, 5, str(row.get('Liga','N/A'))[:15], 1, 0, '', fill)
-        pdf.cell(15, 5, str(row.get('Prob 1.5','0'))+"%", 1, 0, 'C', fill)
-        pdf.cell(10, 5, str(row.get('FT','0')), 1, 0, 'C', fill)
-        pdf.cell(15, 5, str(row.get('1.5FT','RED')), 1, 1, 'C', fill)
-        pdf.set_text_color(0, 0, 0)
-    return bytes(pdf.output())
-
 LIGAS_MAP = {
     462:"Brasileirao A", 463:"Brasileirao B", 148:"Premier League", 
     302:"K League 1", 310:"J1 League", 253:"Campeonato Chileno", 
@@ -114,24 +73,24 @@ LIGAS_MAP = {
     128:"Liga Profesional Argentina", 250:"Liga BetPlay Dimayor", 344:"MLS",
 }
 
-tab1, tab2 = st.tabs(["ANALISADOR AO VIVO", "BACKTEST PRO V26.9.3"])
+tab1, tab2 = st.tabs(["ANALISADOR AO VIVO", "BACKTEST PRO V26.9.4"])
 
 with tab2:
     st.header("BACKTEST PRO - BUSCA POR LIGA")
-    st.success("Agora busca cada liga separado. Vai achar jogo")
+    st.info("DICA: J1 e K League nao tem jogo em Julho. Use Ago/Set 2025")
 
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        data_inicio = st.date_input("Data Inicio", datetime(2025,7,1).date())
+        data_inicio = st.date_input("Data Inicio", datetime(2025,8,1).date()) # MUDEI PRA AGOSTO
     with col2:
-        data_fim = st.date_input("Data Fim", datetime(2025,7,31).date())
+        data_fim = st.date_input("Data Fim", datetime(2025,9,30).date()) # MUDEI PRA SETEMBRO
     with col3:
         stake = st.number_input("Stake R$", 1, 1000, 10)
     with col4:
         odd_real = st.number_input("Odd Real da Casa", 1.10, 3.00, 1.90, 0.05)
     
     ligas_disponiveis = list(LIGAS_MAP.values())
-    ligas_selecionadas = st.multiselect("Selecionar Ligas", ligas_disponiveis, default=["K League 1", "J1 League"])
+    ligas_selecionadas = st.multiselect("Selecionar Ligas", ligas_disponiveis, default=["K League 1", "J1 League", "Campeonato Chileno"])
     
     col5, col6 = st.columns(2)
     with col5:
@@ -154,12 +113,11 @@ with tab2:
             progress = st.progress(0)
             total_ligas = len(ids_filtro)
             
-            # CORRECAO PRINCIPAL: BUSCA JOGO POR LIGA
             for idx_liga, league_id in enumerate(ids_filtro):
                 jogos = api_call("get_events", {"league_id": league_id, "from": data_de, "to": data_ate})
                 
                 if not isinstance(jogos, list): continue
-                jogos_finalizados = [j for j in jogos if j.get('match_status') == 'Finished'][:25] # 25 por liga
+                jogos_finalizados = [j for j in jogos if j.get('match_status') == 'Finished'][:25]
 
                 for jogo in jogos_finalizados:
                     try:
@@ -218,8 +176,11 @@ with tab2:
 
                 st.success(f"BACKTEST CONCLUIDO - {len(resultados_bt)} jogos encontrados")
                 
+                # CORRECAO ROI
                 total_apostado_15 = stats['1.5FT']['total'] * stake
-                lucro = (stats['1.5FT']['green'] * stake * (odd_real - 1)) - (stats['1.5FT']['total'] * stake)
+                lucro_green = stats['1.5FT']['green'] * stake * (odd_real - 1)
+                lucro_red = (stats['1.5FT']['total'] - stats['1.5FT']['green']) * stake
+                lucro = lucro_green - lucro_red
                 roi = (lucro / total_apostado_15) * 100 if total_apostado_15 > 0 else 0
                 
                 col1, col2, col3, col4 = st.columns(4)
@@ -241,12 +202,5 @@ with tab2:
                     else: return ''
                 
                 st.dataframe(df_bt.style.map(color_result, subset=['0.5HT', '1.5FT', '2.5FT']), use_container_width=True)
-                
-                periodo = f"{data_inicio.strftime('%d/%m')} a {data_fim.strftime('%d/%m')}"
-                pdf_bytes = gerar_pdf_backtest(df_bt, stats, periodo, stake, odd_real)
-                st.download_button("Baixar Relatorio PDF", pdf_bytes, f"backtest_{data_inicio}.pdf", "application/pdf")
-                
-                csv_bt = df_bt.to_csv(index=False).encode('utf-8')
-                st.download_button("Baixar Backtest CSV", csv_bt, f"backtest_{data_inicio}.csv", "text/csv")
             else:
-                st.warning("Nenhum jogo encontrado com esse filtro")
+                st.error("Nenhum jogo encontrado. DICA: Troca pra Ago/Set 2025. Julho J1 e K League estao de ferias")
