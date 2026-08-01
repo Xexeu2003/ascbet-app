@@ -5,10 +5,11 @@ from datetime import datetime, timedelta
 from fpdf import FPDF
 from scipy.stats import poisson
 from collections import defaultdict
+import time
 
-st.set_page_config(page_title="Analisador V26.9.4", layout="wide")
-st.title("Analisador V26.9.4 - asc.bet PRO")
-st.caption("Horario Manaus UTC-4 | ROI Corrigido")
+st.set_page_config(page_title="Analisador V26.9.6", layout="wide")
+st.title("Analisador V26.9.6 - asc.bet PRO")
+st.caption("Horario Manaus UTC-4 | AO VIVO Multi-Liga")
 
 API_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
 API_URL = "https://apiv2.apifootball.com/"
@@ -17,7 +18,7 @@ def safe_int(valor):
     try: return int(valor) if valor is not None and valor!= '' else 0
     except: return 0
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=300)
 def api_call(action, params_extra):
     params = {"action": action, "APIkey": API_KEY}
     params.update(params_extra)
@@ -73,30 +74,93 @@ LIGAS_MAP = {
     128:"Liga Profesional Argentina", 250:"Liga BetPlay Dimayor", 344:"MLS",
 }
 
-tab1, tab2 = st.tabs(["ANALISADOR AO VIVO", "BACKTEST PRO V26.9.4"])
+tab1, tab2 = st.tabs(["ANALISADOR AO VIVO", "BACKTEST PRO V26.9.6"])
 
+# ABA 1: AO VIVO MULTI-LIGA
+with tab1:
+    st.header("ANALISADOR AO VIVO - MULTI LIGA")
+    st.warning("Cuidado: API gratis = 100 chamadas/dia. Selecione max 4 ligas")
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        ligas_ao_vivo = st.multiselect(
+            "Selecionar Ligas Ao Vivo", 
+            list(LIGAS_MAP.values()), 
+            default=["K League 1", "J1 League", "Brasileirao A"]
+        )
+    with col2:
+        filtro_prob_vivo = st.slider("Filtro Prob Minima", 70, 95, 85)
+    with col3:
+        if st.button("ATUALIZAR AO VIVO"):
+            st.rerun()
+    
+    with st.spinner("Buscando jogos ao vivo..."):
+        data_hoje = datetime.now().strftime("%Y-%m-%d")
+        jogos_hoje = api_call("get_events", {"from": data_hoje, "to": data_hoje})
+        
+        jogos_ao_vivo = []
+        if isinstance(jogos_hoje, list):
+            ids_foco = [k for k, v in LIGAS_MAP.items() if v in ligas_ao_vivo]
+            for jogo in jogos_hoje:
+                league_id = safe_int(jogo.get('league_id'))
+                status = jogo.get('match_status')
+                
+                # Pega jogo AO VIVO ou que começou nos ultimos 15min
+                if league_id in ids_foco and status not in ['Finished', 'Not Started', 'Postponed', 'Cancelled', 'AET']:
+                    try:
+                        casa_id = jogo.get('match_hometeam_id')
+                        fora_id = jogo.get('match_awayteam_id')
+                        prob_final, p_0_5, p_1_5, p_2_5 = calcular_probabilidade_final(casa_id, fora_id, league_id)
+                        
+                        if p_1_5 >= filtro_prob_vivo:
+                            jogos_ao_vivo.append({
+                                "Hora": jogo.get('match_time'),
+                                "Liga": LIGAS_MAP.get(league_id),
+                                "Jogo": f"{jogo.get('match_hometeam_name')} vs {jogo.get('match_awayteam_name')}",
+                                "Placar": f"{jogo.get('match_hometeam_score')} x {jogo.get('match_awayteam_score')}",
+                                "Minuto": jogo.get('match_status'),
+                                "Prob 1.5": p_1_5,
+                                "Prob 2.5": p_2_5,
+                                "Gols FT": safe_int(jogo.get('match_hometeam_score')) + safe_int(jogo.get('match_awayteam_score'))
+                            })
+                    except: continue
+        
+        if jogos_ao_vivo:
+            df_vivo = pd.DataFrame(jogos_ao_vivo).sort_values("Prob 1.5", ascending=False)
+            st.success(f"ENCONTRADOS {len(df_vivo)} JOGOS COM +{filtro_prob_vivo}%")
+            
+            def color_prob(val):
+                if val >= 90: return 'background-color: #28a745; color: white; font-weight: bold'
+                elif val >= 85: return 'background-color: #ffc107; color: black; font-weight: bold'
+                else: return ''
+            
+            st.dataframe(df_vivo.style.map(color_prob, subset=['Prob 1.5', 'Prob 2.5']), use_container_width=True)
+        else:
+            st.warning(f"Nenhum jogo ao vivo encontrado. 1. Baixe o filtro pra 80%  2. Adicione mais ligas")
+
+# ABA 2: BACKTEST - IGUAL A ANTERIOR
 with tab2:
     st.header("BACKTEST PRO - BUSCA POR LIGA")
-    st.info("DICA: J1 e K League nao tem jogo em Julho. Use Ago/Set 2025")
+    st.info("DICA: Use Ago/Set 2025 pra K League e J1")
 
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        data_inicio = st.date_input("Data Inicio", datetime(2025,8,1).date()) # MUDEI PRA AGOSTO
+        data_inicio = st.date_input("Data Inicio", datetime(2025,8,1).date())
     with col2:
-        data_fim = st.date_input("Data Fim", datetime(2025,9,30).date()) # MUDEI PRA SETEMBRO
+        data_fim = st.date_input("Data Fim", datetime(2025,9,30).date())
     with col3:
         stake = st.number_input("Stake R$", 1, 1000, 10)
     with col4:
         odd_real = st.number_input("Odd Real da Casa", 1.10, 3.00, 1.90, 0.05)
     
     ligas_disponiveis = list(LIGAS_MAP.values())
-    ligas_selecionadas = st.multiselect("Selecionar Ligas", ligas_disponiveis, default=["K League 1", "J1 League", "Campeonato Chileno"])
+    ligas_selecionadas = st.multiselect("Selecionar Ligas Backtest", ligas_disponiveis, default=["K League 1", "J1 League"])
     
     col5, col6 = st.columns(2)
     with col5:
         limite_bt = st.slider("Prob Minima Backtest", 60, 90, 70)
     with col6:
-        filtro_prob = st.slider("Filtro Prob 1.5 na Tabela", 60, 100, 85)
+        filtro_prob = st.slider("Filtro Prob 1.5 na Tabela", 60, 100, 88)
 
     if st.button("RODAR BACKTEST"):
         with st.spinner("Rodando backtest por liga..."):
@@ -176,7 +240,6 @@ with tab2:
 
                 st.success(f"BACKTEST CONCLUIDO - {len(resultados_bt)} jogos encontrados")
                 
-                # CORRECAO ROI
                 total_apostado_15 = stats['1.5FT']['total'] * stake
                 lucro_green = stats['1.5FT']['green'] * stake * (odd_real - 1)
                 lucro_red = (stats['1.5FT']['total'] - stats['1.5FT']['green']) * stake
@@ -203,4 +266,4 @@ with tab2:
                 
                 st.dataframe(df_bt.style.map(color_result, subset=['0.5HT', '1.5FT', '2.5FT']), use_container_width=True)
             else:
-                st.error("Nenhum jogo encontrado. DICA: Troca pra Ago/Set 2025. Julho J1 e K League estao de ferias")
+                st.error("Nenhum jogo encontrado")
