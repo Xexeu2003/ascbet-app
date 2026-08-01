@@ -1,15 +1,13 @@
 import streamlit as st
 import requests
 import pandas as pd
-import numpy as np
 from datetime import datetime, timedelta
 from fpdf import FPDF
 from scipy.stats import poisson
-import time
 
-st.set_page_config(page_title="Analisador V24.4", layout="wide")
-st.title("🚀 Analisador V24.4 - 40 Ligas + 2 PDFs PRO")
-st.caption("Calculo Profissional: Gols | Cores | Top 20 | PDF Completo + TOP20")
+st.set_page_config(page_title="Analisador V24.5", layout="wide")
+st.title("🚀 Analisador V24.5 - 40 Ligas + 2 PDFs PRO")
+st.caption("Otimizado para Cloud | Calculo Profissional: Gols | Cores | Top 20")
 
 API_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
 API_URL = "https://apiv2.apifootball.com/"
@@ -36,13 +34,13 @@ def api_call(action, params_extra):
     params = {"action": action, "APIkey": API_KEY}
     params.update(params_extra)
     try:
-        time.sleep(0.5)
-        r = requests.get(API_URL, params=params, timeout=60)
+        r = requests.get(API_URL, params=params, timeout=45) # TIREI O SLEEP
         return r.json() if r.status_code == 200 else []
     except: return []
 
+@st.cache_data(ttl=3600)
 def calcular_stats_8jogos(time_id, tipo):
-    jogos = api_call("get_events", {"team_id": time_id, "from": (datetime.now() - timedelta(days=120)).strftime("%Y-%m-%d"), "to": datetime.now().strftime("%Y-%m-%d")})
+    jogos = api_call("get_events", {"team_id": time_id, "from": (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d"), "to": datetime.now().strftime("%Y-%m-%d")}) # REDUZI PRA 90 DIAS
     if not isinstance(jogos, list): return {"gols_m":1.5, "gols_s":1.5}
     jogos_finalizados = [j for j in jogos if j.get('match_status') == 'Finished']
     ultimos_8 = jogos_finalizados[:8]
@@ -62,6 +60,7 @@ def calcular_poisson(lambda_casa, lambda_fora):
     prob_2_5 = 1 - poisson.cdf(2, lambda_casa + lambda_fora)
     return prob_0_5_ht, prob_1_5, prob_2_5
 
+@st.cache_data(ttl=3600)
 def calcular_h2h(casa_id, fora_id):
     h2h = api_call("get_H2H", {"firstTeamId": casa_id, "secondTeamId": fora_id})
     if not isinstance(h2h, list): return 2.5
@@ -70,6 +69,7 @@ def calcular_h2h(casa_id, fora_id):
     total_gols = sum([safe_int(j.get('match_hometeam_score')) + safe_int(j.get('match_awayteam_score')) for j in ultimos_5])
     return total_gols / len(ultimos_5) if ultimos_5 else 2.5
 
+@st.cache_data(ttl=3600)
 def calcular_probabilidade_final(casa_id, fora_id, league_id):
     stats_casa = calcular_stats_8jogos(casa_id, "home")
     stats_fora = calcular_stats_8jogos(fora_id, "away")
@@ -97,7 +97,7 @@ def gerar_pdf(df, titulo="Completo"):
     pdf = FPDF(orientation='L')
     pdf.add_page()
     pdf.set_font("Arial", "B", 14)
-    pdf.cell(0, 10, f"Relatorio Analisador V24.4 - {titulo} - {datetime.now().strftime('%d/%m/%Y')}", ln=True, align="C")
+    pdf.cell(0, 10, f"Relatorio Analisador V24.5 - {titulo} - {datetime.now().strftime('%d/%m/%Y')}", ln=True, align="C")
     pdf.ln(3)
     pdf.set_font("Arial", "B", 6)
     pdf.cell(22, 8, "Data", 1); pdf.cell(40, 8, "Liga", 1); pdf.cell(12, 8, "Rod", 1, 0, 'C')
@@ -111,12 +111,11 @@ def gerar_pdf(df, titulo="Completo"):
         if fill: pdf.set_fill_color(240, 240, 240)
         
         prob = row.get('Prob %', 0)
-        # COR NO PDF TAMBEM
-        if prob >= 90: pdf.set_text_color(0, 128, 0) # Verde
-        elif prob >= 80: pdf.set_text_color(0, 0, 255) # Azul
-        else: pdf.set_text_color(255, 140, 0) # Laranja/Amarelo
+        if prob >= 90: pdf.set_text_color(0, 128, 0)
+        elif prob >= 80: pdf.set_text_color(0, 0, 255)
+        else: pdf.set_text_color(255, 140, 0)
         
-        pdf.cell(22, 6, str(row.get('Data','N/A')).encode('latin-1', 'replace').decode('latin-1'), 1, 0, '', fill)
+        pdf.cell(22, 6, str(row.get('Data','N/A'))[:10].encode('latin-1', 'replace').decode('latin-1'), 1, 0, '', fill)
         pdf.cell(40, 6, str(row.get('Liga','N/A'))[:22].encode('latin-1', 'replace').decode('latin-1'), 1, 0, '', fill)
         pdf.cell(12, 6, str(row.get('Rodada','N/A')), 1, 0, 'C', fill)
         pdf.cell(75, 6, str(row.get('Jogo','N/A'))[:38].encode('latin-1', 'replace').decode('latin-1'), 1, 0, '', fill)
@@ -126,24 +125,27 @@ def gerar_pdf(df, titulo="Completo"):
         pdf.cell(15, 6, str(row.get('Gols Fora U8',0)), 1, 0, 'C', fill)
         pdf.cell(18, 6, str(row.get('Prob 2.5 FT','0%')), 1, 0, 'C', fill)
         pdf.cell(15, 6, str(prob)+"%", 1, 1, 'C', fill)
-        pdf.set_text_color(0, 0, 0) # Volta pra preto
+        pdf.set_text_color(0, 0, 0)
     
     return bytes(pdf.output())
 
 st.sidebar.header("⚙️ Filtros")
-dias = st.sidebar.slider("Buscar proximos X dias", 1, 14, 7)
+dias = st.sidebar.slider("Buscar proximos X dias", 1, 7, 3) # REDUZI PRA 3 DIAS PRA FICAR RAPIDO
 limite_prob = st.sidebar.slider("Probabilidade Minima %", 60, 90, 70)
 mostrar_top10 = st.sidebar.checkbox("Mostrar apenas TOP 10 na tela")
 
 if st.button("🚀 ANALISAR JOGOS 70%+"):
-    with st.spinner("Analisando 40 ligas... Aguarde 3 min"):
+    with st.spinner("Analisando 40 ligas... Isso pode demorar 2-3 min na primeira vez"):
         data_de = datetime.now().strftime("%Y-%m-%d")
         data_ate = (datetime.now() + timedelta(days=dias)).strftime("%Y-%m-%d")
         jogos = api_call("get_events", {"from": data_de, "to": data_ate})
         resultados = []
         jogos_analisados = 0
+        progress = st.progress(0)
+        
         if isinstance(jogos, list):
-            for jogo in jogos:
+            total_jogos = len(jogos)
+            for idx, jogo in enumerate(jogos):
                 if safe_int(jogo.get('league_id')) in LIGAS_IDS.values():
                     jogos_analisados += 1
                     try:
@@ -169,11 +171,12 @@ if st.button("🚀 ANALISAR JOGOS 70%+"):
                                 "Prob %": prob_final
                             })
                     except: continue
+                progress.progress((idx + 1) / total_jogos)
         
         if resultados:
             df_completo = pd.DataFrame(resultados).sort_values("Prob %", ascending=False)
             df_tela = df_completo.head(10) if mostrar_top10 else df_completo
-            df_top20 = df_completo.head(20) # TOP 20 PARA PDF
+            df_top20 = df_completo.head(20)
             
             st.success(f"✅ {len(df_completo)} jogos com {limite_prob}%+ encontrados! Analisados: {jogos_analisados}")
             
@@ -185,9 +188,9 @@ if st.button("🚀 ANALISAR JOGOS 70%+"):
             col1, col2 = st.columns(2)
             with col1:
                 pdf_completo = gerar_pdf(df_completo, "Completo")
-                st.download_button("📄 Baixar PDF COMPLETO", pdf_completo, "relatorio_completo_v24_4.pdf", "application/pdf")
+                st.download_button("📄 Baixar PDF COMPLETO", pdf_completo, "relatorio_completo_v24_5.pdf", "application/pdf")
             with col2:
                 pdf_top20 = gerar_pdf(df_top20, "TOP 20")
-                st.download_button("🏆 Baixar PDF TOP 20", pdf_top20, "relatorio_top20_v24_4.pdf", "application/pdf")
+                st.download_button("🏆 Baixar PDF TOP 20", pdf_top20, "relatorio_top20_v24_5.pdf", "application/pdf")
         else:
             st.warning(f"Nenhum jogo bateu {limite_prob}%+. Analisados: {jogos_analisados} jogos. Tente 65%")
