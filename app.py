@@ -5,13 +5,13 @@ from datetime import datetime, timedelta
 from fpdf import FPDF
 from scipy.stats import poisson
 
-st.set_page_config(page_title="Analisador V26.7", layout="wide")
-st.title("Analisador V26.7 - asc.bet PRO")
-st.caption("Horario Manaus UTC-4 | ROI + Filtro Prob + Cores")
+st.set_page_config(page_title="Analisador V26.7.1", layout="wide")
+st.title("Analisador V26.7.1 - asc.bet PRO")
+st.caption("Horario Manaus UTC-4 | ROI + Filtro Prob + Cores FIX")
 
 API_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
 API_URL = "https://apiv2.apifootball.com/"
-ODD_PADRAO = 1.85 # Odd média pra simular ROI
+ODD_PADRAO = 1.85
 
 def safe_int(valor):
     try: return int(valor) if valor is not None and valor!= '' else 0
@@ -105,13 +105,8 @@ def gerar_pdf_backtest(df, stats, periodo, stake):
     return bytes(pdf.output())
 
 LIGAS_MAP = {462:"Brasileirao A", 463:"Brasileirao B", 148:"Premier League", 149:"Championship", 3:"La Liga", 4:"Serie A"}
-LIGAS_IDS = list(LIGAS_MAP.keys())
 
-tab1, tab2 = st.tabs(["ANALISADOR AO VIVO", "BACKTEST PRO V26.7"])
-
-with tab1:
-    st.sidebar.header("Filtros asc.bet")
-    st.info("Use a aba Backtest")
+tab1, tab2 = st.tabs(["ANALISADOR AO VIVO", "BACKTEST PRO V26.7.1"])
 
 with tab2:
     st.header("BACKTEST PRO - 0.5HT 1.5FT 2.5FT")
@@ -132,7 +127,7 @@ with tab2:
     with col4:
         limite_bt = st.slider("Prob Minima Backtest", 60, 90, 70)
     with col5:
-        filtro_prob = st.slider("Filtro Prob 1.5 na Tabela", 60, 100, 70) # ITEM 2
+        filtro_prob = st.slider("Filtro Prob 1.5 na Tabela", 60, 100, 70)
 
     if st.button("RODAR BACKTEST"):
         with st.spinner("Rodando backtest..."):
@@ -182,7 +177,6 @@ with tab2:
                                 stats["2.5FT"]["total"] += 1
                                 if green_25: stats["2.5FT"]["green"] += 1
 
-                            # ITEM 2: FILTRO POR PROB NA TABELA
                             if p_1_5 >= filtro_prob:
                                 resultados_bt.append({
                                     "Data": jogo.get('match_date'),
@@ -191,7 +185,7 @@ with tab2:
                                     "Prob 0.5": p_0_5, "Prob 1.5": p_1_5, "Prob 2.5": p_2_5,
                                     "HT": gols_ht, "FT": gols_ft,
                                     "0.5HT": "GREEN" if green_05 else "RED",
-                                    "1.5FT": "GREEN" if green_15 else "RED", # ITEM 3
+                                    "1.5FT": "GREEN" if green_15 else "RED",
                                     "2.5FT": "GREEN" if green_25 else "RED"
                                 })
                     except: continue
@@ -207,7 +201,7 @@ with tab2:
 
                 st.success("BACKTEST CONCLUIDO")
                 
-                # ITEM 1: ROI SIMULADOR
+                # ROI CORRIGIDO: só conta jogos 1.5FT
                 lucro = (stats['1.5FT']['green'] * stake * (ODD_PADRAO - 1)) - (stats['1.5FT']['total'] * stake)
                 roi = (lucro / (stats['1.5FT']['total'] * stake)) * 100 if stats['1.5FT']['total'] > 0 else 0
                 col1, col2, col3, col4 = st.columns(4)
@@ -216,13 +210,13 @@ with tab2:
                 col3.metric("2.5FT", f"{stats['2.5FT']['taxa']:.1f}%", f"{stats['2.5FT']['green']}/{stats['2.5FT']['total']}")
                 col4.metric("ROI 1.5FT", f"{roi:.1f}%", f"R${lucro:.2f}")
 
-                # ITEM 3: CORES NA TABELA
+                # CORRECAO: troquei applymap por map
                 def color_result(val):
                     if val == 'GREEN': return 'background-color: #d4edda; color: #155724; font-weight: bold'
                     elif val == 'RED': return 'background-color: #f8d7da; color: #721c24; font-weight: bold'
                     else: return ''
                 
-                st.dataframe(df_bt.style.applymap(color_result, subset=['0.5HT', '1.5FT', '2.5FT']), use_container_width=True)
+                st.dataframe(df_bt.style.map(color_result, subset=['0.5HT', '1.5FT', '2.5FT']), use_container_width=True)
                 
                 periodo = f"{data_inicio.strftime('%d/%m')} a {data_fim.strftime('%d/%m')}"
                 pdf_bytes = gerar_pdf_backtest(df_bt, stats, periodo, stake)
