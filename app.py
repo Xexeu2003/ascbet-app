@@ -5,9 +5,9 @@ from datetime import datetime, timedelta
 from fpdf import FPDF
 from scipy.stats import poisson
 
-st.set_page_config(page_title="Analisador V24.5", layout="wide")
-st.title("🚀 Analisador V24.5 - 40 Ligas + 2 PDFs PRO")
-st.caption("Otimizado para Cloud | Calculo Profissional: Gols | Cores | Top 20")
+st.set_page_config(page_title="Analisador V24.7", layout="wide")
+st.title("🚀 Analisador V24.7 - 40 Ligas + 0.5 + 1.5 + 2.5 + 2 PDFs")
+st.caption("Otimizado para Cloud | Calculo Profissional Completo")
 
 API_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
 API_URL = "https://apiv2.apifootball.com/"
@@ -34,13 +34,13 @@ def api_call(action, params_extra):
     params = {"action": action, "APIkey": API_KEY}
     params.update(params_extra)
     try:
-        r = requests.get(API_URL, params=params, timeout=45) # TIREI O SLEEP
+        r = requests.get(API_URL, params=params, timeout=45)
         return r.json() if r.status_code == 200 else []
     except: return []
 
 @st.cache_data(ttl=3600)
 def calcular_stats_8jogos(time_id, tipo):
-    jogos = api_call("get_events", {"team_id": time_id, "from": (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d"), "to": datetime.now().strftime("%Y-%m-%d")}) # REDUZI PRA 90 DIAS
+    jogos = api_call("get_events", {"team_id": time_id, "from": (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d"), "to": datetime.now().strftime("%Y-%m-%d")})
     if not isinstance(jogos, list): return {"gols_m":1.5, "gols_s":1.5}
     jogos_finalizados = [j for j in jogos if j.get('match_status') == 'Finished']
     ultimos_8 = jogos_finalizados[:8]
@@ -97,12 +97,14 @@ def gerar_pdf(df, titulo="Completo"):
     pdf = FPDF(orientation='L')
     pdf.add_page()
     pdf.set_font("Arial", "B", 14)
-    pdf.cell(0, 10, f"Relatorio Analisador V24.5 - {titulo} - {datetime.now().strftime('%d/%m/%Y')}", ln=True, align="C")
+    pdf.cell(0, 10, f"Relatorio Analisador V24.7 - {titulo} - {datetime.now().strftime('%d/%m/%Y')}", ln=True, align="C")
     pdf.ln(3)
     pdf.set_font("Arial", "B", 6)
     pdf.cell(22, 8, "Data", 1); pdf.cell(40, 8, "Liga", 1); pdf.cell(12, 8, "Rod", 1, 0, 'C')
     pdf.cell(75, 8, "Jogo", 1); pdf.cell(18, 8, "Pos", 1, 0, 'C'); pdf.cell(15, 8, "H2H", 1, 0, 'C')
     pdf.cell(15, 8, "GC U8", 1, 0, 'C'); pdf.cell(15, 8, "GF U8", 1, 0, 'C')
+    pdf.cell(18, 8, "Prob 0.5", 1, 0, 'C')
+    pdf.cell(18, 8, "Prob 1.5", 1, 0, 'C') # NOVA COLUNA
     pdf.cell(18, 8, "Prob 2.5", 1, 0, 'C'); pdf.cell(15, 8, "Prob %", 1, 1, 'C')
     
     pdf.set_font("Arial", "", 6)
@@ -123,6 +125,8 @@ def gerar_pdf(df, titulo="Completo"):
         pdf.cell(15, 6, str(row.get('Media H2H 5J',0)), 1, 0, 'C', fill)
         pdf.cell(15, 6, str(row.get('Gols Casa U8',0)), 1, 0, 'C', fill)
         pdf.cell(15, 6, str(row.get('Gols Fora U8',0)), 1, 0, 'C', fill)
+        pdf.cell(18, 6, str(row.get('Prob 0.5 HT','0%')), 1, 0, 'C', fill)
+        pdf.cell(18, 6, str(row.get('Prob 1.5 FT','0%')), 1, 0, 'C', fill) # NOVA CELULA
         pdf.cell(18, 6, str(row.get('Prob 2.5 FT','0%')), 1, 0, 'C', fill)
         pdf.cell(15, 6, str(prob)+"%", 1, 1, 'C', fill)
         pdf.set_text_color(0, 0, 0)
@@ -130,7 +134,7 @@ def gerar_pdf(df, titulo="Completo"):
     return bytes(pdf.output())
 
 st.sidebar.header("⚙️ Filtros")
-dias = st.sidebar.slider("Buscar proximos X dias", 1, 7, 3) # REDUZI PRA 3 DIAS PRA FICAR RAPIDO
+dias = st.sidebar.slider("Buscar proximos X dias", 1, 7, 3)
 limite_prob = st.sidebar.slider("Probabilidade Minima %", 60, 90, 70)
 mostrar_top10 = st.sidebar.checkbox("Mostrar apenas TOP 10 na tela")
 
@@ -167,6 +171,7 @@ if st.button("🚀 ANALISAR JOGOS 70%+"):
                                 "Gols Fora U8": f"{stats_fora['gols_m']:.2f}",
                                 "Media H2H 5J": media_h2h,
                                 "Prob 0.5 HT": f"{p_0_5}%",
+                                "Prob 1.5 FT": f"{p_1_5}%", # NOVA COLUNA
                                 "Prob 2.5 FT": f"{p_2_5}%",
                                 "Prob %": prob_final
                             })
@@ -188,9 +193,9 @@ if st.button("🚀 ANALISAR JOGOS 70%+"):
             col1, col2 = st.columns(2)
             with col1:
                 pdf_completo = gerar_pdf(df_completo, "Completo")
-                st.download_button("📄 Baixar PDF COMPLETO", pdf_completo, "relatorio_completo_v24_5.pdf", "application/pdf")
+                st.download_button("📄 Baixar PDF COMPLETO", pdf_completo, "relatorio_completo_v24_7.pdf", "application/pdf")
             with col2:
                 pdf_top20 = gerar_pdf(df_top20, "TOP 20")
-                st.download_button("🏆 Baixar PDF TOP 20", pdf_top20, "relatorio_top20_v24_5.pdf", "application/pdf")
+                st.download_button("🏆 Baixar PDF TOP 20", pdf_top20, "relatorio_top20_v24_7.pdf", "application/pdf")
         else:
             st.warning(f"Nenhum jogo bateu {limite_prob}%+. Analisados: {jogos_analisados} jogos. Tente 65%")
