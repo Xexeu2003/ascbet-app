@@ -7,9 +7,9 @@ from fpdf import FPDF
 from scipy.stats import poisson
 import time
 
-st.set_page_config(page_title="Analisador V23.5", layout="wide")
-st.title("🚀 Analisador V23.5 - 40 Ligas + PDF OK")
-st.caption("Calculo Profissional: Gols + H2H | Min 70%")
+st.set_page_config(page_title="Analisador V23.6", layout="wide")
+st.title("🚀 Analisador V23.6 - 40 Ligas + Mais Assertivo")
+st.caption("Calculo Profissional: Gols | Min 70%")
 
 API_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
 API_URL = "https://apiv2.apifootball.com/"
@@ -41,9 +41,9 @@ def api_call(action, params_extra):
         return r.json() if r.status_code == 200 else []
     except: return []
 
-def calcular_stats_8jogos(time_id, league_id, tipo):
+def calcular_stats_8jogos(time_id, tipo):
     jogos = api_call("get_events", {"team_id": time_id, "from": (datetime.now() - timedelta(days=120)).strftime("%Y-%m-%d"), "to": datetime.now().strftime("%Y-%m-%d")})
-    if not isinstance(jogos, list): return {"gols_m":1.4, "gols_s":1.4}
+    if not isinstance(jogos, list): return {"gols_m":1.5, "gols_s":1.5}
     jogos_finalizados = [j for j in jogos if j.get('match_status') == 'Finished']
     ultimos_8 = jogos_finalizados[:8]
     gols_m = gols_s = jogos_contados = 0
@@ -53,7 +53,7 @@ def calcular_stats_8jogos(time_id, league_id, tipo):
             gols_m += safe_int(j.get('match_hometeam_score')) if is_home else safe_int(j.get('match_awayteam_score'))
             gols_s += safe_int(j.get('match_awayteam_score')) if is_home else safe_int(j.get('match_hometeam_score'))
             jogos_contados += 1
-    if jogos_contados == 0: return {"gols_m":1.4, "gols_s":1.4}
+    if jogos_contados == 0: return {"gols_m":1.5, "gols_s":1.5}
     return {"gols_m": gols_m / jogos_contados, "gols_s": gols_s / jogos_contados}
 
 def calcular_poisson(lambda_casa, lambda_fora):
@@ -64,31 +64,34 @@ def calcular_poisson(lambda_casa, lambda_fora):
 
 def calcular_h2h(casa_id, fora_id):
     h2h = api_call("get_H2H", {"firstTeamId": casa_id, "secondTeamId": fora_id})
-    if not isinstance(h2h, list): return 2.6
+    if not isinstance(h2h, list): return 2.5
     jogos_finalizados = [j for j in h2h if j.get('match_status') == 'Finished']
     ultimos_5 = jogos_finalizados[:5]
     total_gols = sum([safe_int(j.get('match_hometeam_score')) + safe_int(j.get('match_awayteam_score')) for j in ultimos_5])
-    return total_gols / len(ultimos_5) if ultimos_5 else 2.6
+    return total_gols / len(ultimos_5) if ultimos_5 else 2.5
 
 def calcular_probabilidade_final(casa_id, fora_id, league_id):
-    stats_casa = calcular_stats_8jogos(casa_id, league_id, "home")
-    stats_fora = calcular_stats_8jogos(fora_id, league_id, "away")
-    tabela = api_call("get_standings", {"league_id": league_id})
-    if not isinstance(tabela, list) or len(tabela) == 0: tabela = []
-    total_gols_liga = sum([safe_int(t.get('all_goals_for')) for t in tabela])
-    total_jogos_liga = max(len(tabela), 1) * 2
-    media_liga = total_gols_liga / total_jogos_liga if total_jogos_liga > 0 and total_gols_liga > 0 else 2.7
+    stats_casa = calcular_stats_8jogos(casa_id, "home")
+    stats_fora = calcular_stats_8jogos(fora_id, "away")
+    
+    media_liga = 2.7 # Fixa pra não depender da tabela
+    
     divisor = media_liga / 2
-    if divisor == 0: divisor = 1.35
     atq_casa = stats_casa['gols_m'] / divisor
     def_casa = stats_casa['gols_s'] / divisor
     atq_fora = stats_fora['gols_m'] / divisor
     def_fora = stats_fora['gols_s'] / divisor
+    
     lambda_casa = atq_casa * def_fora * divisor
     lambda_fora = atq_fora * def_casa * divisor
+    
     p_0_5, p_1_5, p_2_5 = calcular_poisson(lambda_casa, lambda_fora)
     media_h2h = calcular_h2h(casa_id, fora_id)
-    prob_final = (p_2_5 * 0.55 + p_1_5 * 0.15 + p_0_5 * 0.1 + (media_h2h/4)*100 * 0.2)
+    
+    # FORMULA V23.6 MAIS REALISTA
+    bonus_h2h = (media_h2h / 3.0) * 10 # Bonus de ate 10% se H2H for 3.0
+    prob_final = (p_2_5 * 70) + (p_1_5 * 20) + (p_0_5 * 10) + bonus_h2h
+    
     prob_final = min(round(prob_final), 99) # LIMITE 99%
     return prob_final, round(p_0_5*100), round(p_1_5*100), round(p_2_5*100), round(media_h2h, 2), stats_casa, stats_fora
 
@@ -96,17 +99,10 @@ def gerar_pdf(df):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", "B", 16)
-    pdf.cell(200, 10, "Relatorio Analisador V23.5", ln=True, align="C")
+    pdf.cell(200, 10, "Relatorio Analisador V23.6", ln=True, align="C")
     pdf.set_font("Arial", "", 8)
     for i, row in df.iterrows():
-        data = row.get('Data', 'N/A')
-        liga = row.get('Liga', 'N/A')
-        rodada = row.get('Rodada', 'N/A')
-        jogo = row.get('Jogo', 'N/A')
-        prob = row.get('Prob %', 0)
-        p25 = row.get('Prob 2.5 FT', '0%')
-        h2h = row.get('Media H2H 5J', 0)
-        texto = f"{data} | {liga} R{rodada} | {jogo} | H2H:{h2h} | 2.5:{p25} | Prob:{prob}%"
+        texto = f"{row.get('Data')} | {row.get('Liga')} | {row.get('Jogo')} | 2.5:{row.get('Prob 2.5 FT')} | Prob:{row.get('Prob %')}%"
         pdf.cell(200, 6, texto.encode('latin-1', 'replace').decode('latin-1'), ln=True)
     return pdf.output()
 
@@ -152,6 +148,6 @@ if st.button("🚀 ANALISAR JOGOS 70%+"):
             st.success(f"✅ {len(df)} jogos com {limite_prob}%+ encontrados! Analisados: {jogos_analisados}")
             st.dataframe(df, use_container_width=True)
             pdf_bytes = gerar_pdf(df)
-            st.download_button("📄 Baixar PDF", pdf_bytes, "relatorio_v23_5.pdf", "application/pdf")
+            st.download_button("📄 Baixar PDF", pdf_bytes, "relatorio_v23_6.pdf", "application/pdf")
         else:
-            st.warning(f"Nenhum jogo bateu {limite_prob}%+. Analisados: {jogos_analisados} jogos.")
+            st.warning(f"Nenhum jogo bateu {limite_prob}%+. Analisados: {jogos_analisados} jogos. Tente 65%")
