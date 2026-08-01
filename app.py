@@ -7,8 +7,8 @@ from fpdf import FPDF
 from scipy.stats import poisson
 import time
 
-st.set_page_config(page_title="Analisador V24.2", layout="wide")
-st.title("🚀 Analisador V24.2 - 40 Ligas + Filtros PRO")
+st.set_page_config(page_title="Analisador V24.3", layout="wide")
+st.title("🚀 Analisador V24.3 - 40 Ligas + Filtros PRO")
 st.caption("Calculo Profissional: Gols | Cores | Top 10 | PDF Tabela")
 
 API_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
@@ -88,16 +88,16 @@ def calcular_probabilidade_final(casa_id, fora_id, league_id):
     prob_final = min(round(prob_final), 99)
     return prob_final, round(p_0_5*100), round(p_1_5*100), round(p_2_5*100), round(media_h2h, 2), stats_casa, stats_fora
 
-def cor_prob(val):
-    if val >= 90: return 'background-color: #d4edda; color: #155724' # Verde
-    elif val >= 80: return 'background-color: #fff3cd; color: #856404' # Amarelo
-    else: return 'background-color: #ffeeba; color: #856404' # Laranja
+def cor_prob(val): # CORRIGIDO PRA VERSAO NOVA
+    if val >= 90: return 'background-color: #d4edda; color: #155724'
+    elif val >= 80: return 'background-color: #fff3cd; color: #856404'
+    else: return 'background-color: #ffeeba; color: #856404'
 
 def gerar_pdf(df):
     pdf = FPDF(orientation='L')
     pdf.add_page()
     pdf.set_font("Arial", "B", 14)
-    pdf.cell(0, 10, f"Relatorio Analisador V24.2 - {datetime.now().strftime('%d/%m/%Y')}", ln=True, align="C")
+    pdf.cell(0, 10, f"Relatorio Analisador V24.3 - {datetime.now().strftime('%d/%m/%Y')}", ln=True, align="C")
     pdf.ln(3)
     pdf.set_font("Arial", "B", 6)
     pdf.cell(22, 8, "Data", 1); pdf.cell(40, 8, "Liga", 1); pdf.cell(12, 8, "Rod", 1, 0, 'C')
@@ -122,7 +122,6 @@ def gerar_pdf(df):
     
     return bytes(pdf.output())
 
-# SIDEBAR SEM FILTRO DE LIGA
 st.sidebar.header("⚙️ Filtros")
 dias = st.sidebar.slider("Buscar proximos X dias", 1, 14, 7)
 limite_prob = st.sidebar.slider("Probabilidade Minima %", 60, 90, 70)
@@ -137,7 +136,7 @@ if st.button("🚀 ANALISAR JOGOS 70%+"):
         jogos_analisados = 0
         if isinstance(jogos, list):
             for jogo in jogos:
-                if safe_int(jogo.get('league_id')) in LIGAS_IDS.values(): # VOLTOU 40 LIGAS FIXAS
+                if safe_int(jogo.get('league_id')) in LIGAS_IDS.values():
                     jogos_analisados += 1
                     try:
                         casa_id = jogo.get('match_hometeam_id')
@@ -169,12 +168,12 @@ if st.button("🚀 ANALISAR JOGOS 70%+"):
             
             st.success(f"✅ {len(df)} jogos com {limite_prob}%+ encontrados! Analisados: {jogos_analisados}")
             
-            # TABELA COM CORES
+            # CORRECAO AQUI: TROQUEI applymap POR map
             st.dataframe(
-                df.style.applymap(cor_prob, subset=['Prob %']),
+                df.style.map(cor_prob, subset=['Prob %']),
                 use_container_width=True
             )
             pdf_bytes = gerar_pdf(df)
-            st.download_button("📄 Baixar PDF", pdf_bytes, "relatorio_v24_2.pdf", "application/pdf")
+            st.download_button("📄 Baixar PDF", pdf_bytes, "relatorio_v24_3.pdf", "application/pdf")
         else:
             st.warning(f"Nenhum jogo bateu {limite_prob}%+. Analisados: {jogos_analisados} jogos. Tente 65%")
