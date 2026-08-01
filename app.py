@@ -7,8 +7,8 @@ from fpdf import FPDF
 from scipy.stats import poisson
 import time
 
-st.set_page_config(page_title="Analisador V23.6", layout="wide")
-st.title("🚀 Analisador V23.6 - 40 Ligas + Mais Assertivo")
+st.set_page_config(page_title="Analisador V23.7", layout="wide")
+st.title("🚀 Analisador V23.7 - 40 Ligas + PDF OK")
 st.caption("Calculo Profissional: Gols | Min 70%")
 
 API_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
@@ -73,38 +73,32 @@ def calcular_h2h(casa_id, fora_id):
 def calcular_probabilidade_final(casa_id, fora_id, league_id):
     stats_casa = calcular_stats_8jogos(casa_id, "home")
     stats_fora = calcular_stats_8jogos(fora_id, "away")
-    
-    media_liga = 2.7 # Fixa pra não depender da tabela
-    
+    media_liga = 2.7
     divisor = media_liga / 2
     atq_casa = stats_casa['gols_m'] / divisor
     def_casa = stats_casa['gols_s'] / divisor
     atq_fora = stats_fora['gols_m'] / divisor
     def_fora = stats_fora['gols_s'] / divisor
-    
     lambda_casa = atq_casa * def_fora * divisor
     lambda_fora = atq_fora * def_casa * divisor
-    
     p_0_5, p_1_5, p_2_5 = calcular_poisson(lambda_casa, lambda_fora)
     media_h2h = calcular_h2h(casa_id, fora_id)
-    
-    # FORMULA V23.6 MAIS REALISTA
-    bonus_h2h = (media_h2h / 3.0) * 10 # Bonus de ate 10% se H2H for 3.0
+    bonus_h2h = (media_h2h / 3.0) * 10
     prob_final = (p_2_5 * 70) + (p_1_5 * 20) + (p_0_5 * 10) + bonus_h2h
-    
-    prob_final = min(round(prob_final), 99) # LIMITE 99%
+    prob_final = min(round(prob_final), 99)
     return prob_final, round(p_0_5*100), round(p_1_5*100), round(p_2_5*100), round(media_h2h, 2), stats_casa, stats_fora
 
 def gerar_pdf(df):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", "B", 16)
-    pdf.cell(200, 10, "Relatorio Analisador V23.6", ln=True, align="C")
+    pdf.cell(200, 10, "Relatorio Analisador V23.7", ln=True, align="C")
     pdf.set_font("Arial", "", 8)
     for i, row in df.iterrows():
         texto = f"{row.get('Data')} | {row.get('Liga')} | {row.get('Jogo')} | 2.5:{row.get('Prob 2.5 FT')} | Prob:{row.get('Prob %')}%"
         pdf.cell(200, 6, texto.encode('latin-1', 'replace').decode('latin-1'), ln=True)
-    return pdf.output()
+    pdf_output = pdf.output()
+    return bytes(pdf_output) # CORREÇÃO AQUI
 
 dias = st.sidebar.slider("Buscar proximos X dias", 1, 14, 7)
 limite_prob = st.sidebar.slider("Probabilidade Minima %", 60, 90, 70)
@@ -148,6 +142,6 @@ if st.button("🚀 ANALISAR JOGOS 70%+"):
             st.success(f"✅ {len(df)} jogos com {limite_prob}%+ encontrados! Analisados: {jogos_analisados}")
             st.dataframe(df, use_container_width=True)
             pdf_bytes = gerar_pdf(df)
-            st.download_button("📄 Baixar PDF", pdf_bytes, "relatorio_v23_6.pdf", "application/pdf")
+            st.download_button("📄 Baixar PDF", pdf_bytes, "relatorio_v23_7.pdf", "application/pdf")
         else:
             st.warning(f"Nenhum jogo bateu {limite_prob}%+. Analisados: {jogos_analisados} jogos. Tente 65%")
