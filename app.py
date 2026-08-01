@@ -6,9 +6,9 @@ from fpdf import FPDF
 from scipy.stats import poisson
 from collections import defaultdict
 
-st.set_page_config(page_title="Analisador V26.9.2", layout="wide")
-st.title("Analisador V26.9.2 - asc.bet PRO")
-st.caption("Horario Manaus UTC-4 | ATENCAO: Use datas de 2024/2025")
+st.set_page_config(page_title="Analisador V26.9.3", layout="wide")
+st.title("Analisador V26.9.3 - asc.bet PRO")
+st.caption("Horario Manaus UTC-4 | Busca por Liga Direto")
 
 API_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
 API_URL = "https://apiv2.apifootball.com/"
@@ -114,23 +114,23 @@ LIGAS_MAP = {
     128:"Liga Profesional Argentina", 250:"Liga BetPlay Dimayor", 344:"MLS",
 }
 
-tab1, tab2 = st.tabs(["ANALISADOR AO VIVO", "BACKTEST PRO V26.9.2"])
+tab1, tab2 = st.tabs(["ANALISADOR AO VIVO", "BACKTEST PRO V26.9.3"])
 
 with tab2:
-    st.header("BACKTEST PRO - FILTRO MULTI LIGA")
-    st.error("ATENCAO: API Gratis so tem dados ate 2025. Nao use 2026")
+    st.header("BACKTEST PRO - BUSCA POR LIGA")
+    st.success("Agora busca cada liga separado. Vai achar jogo")
 
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        data_inicio = st.date_input("Data Inicio", datetime(2025,7,1).date()) # PADRAO 2025
+        data_inicio = st.date_input("Data Inicio", datetime(2025,7,1).date())
     with col2:
-        data_fim = st.date_input("Data Fim", datetime(2025,7,31).date()) # PADRAO 2025
+        data_fim = st.date_input("Data Fim", datetime(2025,7,31).date())
     with col3:
         stake = st.number_input("Stake R$", 1, 1000, 10)
     with col4:
         odd_real = st.number_input("Odd Real da Casa", 1.10, 3.00, 1.90, 0.05)
     
-    ligas_disponiveis = ["Todas"] + list(LIGAS_MAP.values())
+    ligas_disponiveis = list(LIGAS_MAP.values())
     ligas_selecionadas = st.multiselect("Selecionar Ligas", ligas_disponiveis, default=["K League 1", "J1 League"])
     
     col5, col6 = st.columns(2)
@@ -140,34 +140,31 @@ with tab2:
         filtro_prob = st.slider("Filtro Prob 1.5 na Tabela", 60, 100, 85)
 
     if st.button("RODAR BACKTEST"):
-        with st.spinner("Rodando backtest..."):
+        with st.spinner("Rodando backtest por liga..."):
             data_de = data_inicio.strftime("%Y-%m-%d")
             data_ate = data_fim.strftime("%Y-%m-%d")
-            jogos = api_call("get_events", {"from": data_de, "to": data_ate})
 
             resultados_bt = []
             stats = {"0.5HT": {"total":0, "green":0, "taxa":0}, "1.5FT": {"total":0, "green":0, "taxa":0}, "2.5FT": {"total":0, "green":0, "taxa":0}}
             ranking_ligas = defaultdict(lambda: {"total":0, "green":0})
             cache_times = {}
 
-            if isinstance(jogos, list):
-                jogos_finalizados = [j for j in jogos if j.get('match_status') == 'Finished']
+            ids_filtro = [k for k, v in LIGAS_MAP.items() if v in ligas_selecionadas]
+            
+            progress = st.progress(0)
+            total_ligas = len(ids_filtro)
+            
+            # CORRECAO PRINCIPAL: BUSCA JOGO POR LIGA
+            for idx_liga, league_id in enumerate(ids_filtro):
+                jogos = api_call("get_events", {"league_id": league_id, "from": data_de, "to": data_ate})
                 
-                if "Todas" not in ligas_selecionadas:
-                    ids_filtro = [k for k, v in LIGAS_MAP.items() if v in ligas_selecionadas]
-                    jogos_finalizados = [j for j in jogos_finalizados if safe_int(j.get('league_id')) in ids_filtro]
-                
-                jogos_finalizados = jogos_finalizados[:50]
-                
-                if len(jogos_finalizados) == 0:
-                    st.error("Nenhum jogo encontrado. 1. Verifique se a data e 2024/2025  2. Selecione menos ligas")
-                
-                progress = st.progress(0)
-                for idx, jogo in enumerate(jogos_finalizados):
+                if not isinstance(jogos, list): continue
+                jogos_finalizados = [j for j in jogos if j.get('match_status') == 'Finished'][:25] # 25 por liga
+
+                for jogo in jogos_finalizados:
                     try:
                         casa_id = jogo.get('match_hometeam_id')
                         fora_id = jogo.get('match_awayteam_id')
-                        league_id = safe_int(jogo.get('league_id'))
                         nome_liga = LIGAS_MAP.get(league_id, "Outra")
 
                         cache_key = f"{casa_id}_{fora_id}"
@@ -209,7 +206,7 @@ with tab2:
                                     "2.5FT": "GREEN" if green_25 else "RED"
                                 })
                     except: continue
-                    progress.progress((idx + 1) / len(jogos_finalizados))
+                progress.progress((idx_liga + 1) / total_ligas)
 
             if resultados_bt:
                 df_bt = pd.DataFrame(resultados_bt)
@@ -219,7 +216,7 @@ with tab2:
                     green = stats[m]["green"]
                     stats[m]["taxa"] = (green / total) * 100 if total > 0 else 0
 
-                st.success("BACKTEST CONCLUIDO")
+                st.success(f"BACKTEST CONCLUIDO - {len(resultados_bt)} jogos encontrados")
                 
                 total_apostado_15 = stats['1.5FT']['total'] * stake
                 lucro = (stats['1.5FT']['green'] * stake * (odd_real - 1)) - (stats['1.5FT']['total'] * stake)
