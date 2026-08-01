@@ -4,13 +4,15 @@ import pandas as pd
 from datetime import datetime, timedelta
 from fpdf import FPDF
 from scipy.stats import poisson
+import pytz # PARA HORARIO DE MANAUS
 
-st.set_page_config(page_title="Analisador V24.7", layout="wide")
-st.title("🚀 Analisador V24.7 - 40 Ligas + 0.5 + 1.5 + 2.5 + 2 PDFs")
-st.caption("Otimizado para Cloud | Calculo Profissional Completo")
+st.set_page_config(page_title="Analisador V25.0", layout="wide")
+st.title("🚀 Analisador V25.0 - asc.bet PRO")
+st.caption("Horário Manaus | Logo Oficial | 40 Ligas + 2 PDFs + 0.5 + 1.5 + 2.5")
 
 API_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
 API_URL = "https://apiv2.apifootball.com/"
+TIMEZONE_MANAUS = pytz.timezone('America/Manaus') # FUSO MANAUS UTC-4
 
 LIGAS_IDS = {
     "Brasil Serie A": 462, "Brasil Serie B": 463, "Brasil Serie C": 464, "Brasil Serie D": 465,
@@ -28,6 +30,14 @@ LIGAS_IDS = {
 def safe_int(valor):
     try: return int(valor) if valor is not None and valor != '' else 0
     except: return 0
+
+def converter_horario(data_str, hora_str):
+    try:
+        dt_utc = datetime.strptime(f"{data_str} {hora_str}", "%Y-%m-%d %H:%M")
+        dt_utc = pytz.utc.localize(dt_utc)
+        dt_manaus = dt_utc.astimezone(TIMEZONE_MANAUS)
+        return dt_manaus.strftime("%d/%m %H:%M")
+    except: return f"{data_str} {hora_str}"
 
 @st.cache_data(ttl=3600)
 def api_call(action, params_extra):
@@ -63,11 +73,11 @@ def calcular_poisson(lambda_casa, lambda_fora):
 @st.cache_data(ttl=3600)
 def calcular_h2h(casa_id, fora_id):
     h2h = api_call("get_H2H", {"firstTeamId": casa_id, "secondTeamId": fora_id})
-    if not isinstance(h2h, list): return 2.5
+    if not isinstance(h2h, list): return "N/A"
     jogos_finalizados = [j for j in h2h if j.get('match_status') == 'Finished']
     ultimos_5 = jogos_finalizados[:5]
     total_gols = sum([safe_int(j.get('match_hometeam_score')) + safe_int(j.get('match_awayteam_score')) for j in ultimos_5])
-    return total_gols / len(ultimos_5) if ultimos_5 else 2.5
+    return round(total_gols / len(ultimos_5), 2) if ultimos_5 else "N/A"
 
 @st.cache_data(ttl=3600)
 def calcular_probabilidade_final(casa_id, fora_id, league_id):
@@ -83,10 +93,10 @@ def calcular_probabilidade_final(casa_id, fora_id, league_id):
     lambda_fora = atq_fora * def_casa * divisor
     p_0_5, p_1_5, p_2_5 = calcular_poisson(lambda_casa, lambda_fora)
     media_h2h = calcular_h2h(casa_id, fora_id)
-    bonus_h2h = (media_h2h / 3.0) * 10
+    bonus_h2h = 0 if media_h2h == "N/A" else (media_h2h / 3.0) * 10
     prob_final = (p_2_5 * 70) + (p_1_5 * 20) + (p_0_5 * 10) + bonus_h2h
     prob_final = min(round(prob_final), 99)
-    return prob_final, round(p_0_5*100), round(p_1_5*100), round(p_2_5*100), round(media_h2h, 2), stats_casa, stats_fora
+    return prob_final, round(p_0_5*100), round(p_1_5*100), round(p_2_5*100), media_h2h, stats_casa, stats_fora
 
 def cor_prob(val):
     if val >= 90: return 'background-color: #d4edda; color: #155724' # Verde
@@ -96,15 +106,23 @@ def cor_prob(val):
 def gerar_pdf(df, titulo="Completo"):
     pdf = FPDF(orientation='L')
     pdf.add_page()
+    
+    # LOGO ASC.BET COM BOLA
+    pdf.set_font("Arial", "B", 22)
+    pdf.set_text_color(0, 128, 0) # Verde asc.bet
+    pdf.cell(0, 12, "⚽ asc.bet", ln=True, align="C")
+    pdf.set_text_color(0, 0, 0)
+    
     pdf.set_font("Arial", "B", 14)
-    pdf.cell(0, 10, f"Relatorio Analisador V24.7 - {titulo} - {datetime.now().strftime('%d/%m/%Y')}", ln=True, align="C")
+    data_hoje = datetime.now(TIMEZONE_MANAUS).strftime('%d/%m/%Y %H:%M')
+    pdf.cell(0, 10, f"Relatorio Analisador V25.0 - {titulo} - {data_hoje}", ln=True, align="C")
     pdf.ln(3)
+    
     pdf.set_font("Arial", "B", 6)
     pdf.cell(22, 8, "Data", 1); pdf.cell(40, 8, "Liga", 1); pdf.cell(12, 8, "Rod", 1, 0, 'C')
     pdf.cell(75, 8, "Jogo", 1); pdf.cell(18, 8, "Pos", 1, 0, 'C'); pdf.cell(15, 8, "H2H", 1, 0, 'C')
     pdf.cell(15, 8, "GC U8", 1, 0, 'C'); pdf.cell(15, 8, "GF U8", 1, 0, 'C')
-    pdf.cell(18, 8, "Prob 0.5", 1, 0, 'C')
-    pdf.cell(18, 8, "Prob 1.5", 1, 0, 'C') # NOVA COLUNA
+    pdf.cell(18, 8, "Prob 0.5", 1, 0, 'C'); pdf.cell(18, 8, "Prob 1.5", 1, 0, 'C')
     pdf.cell(18, 8, "Prob 2.5", 1, 0, 'C'); pdf.cell(15, 8, "Prob %", 1, 1, 'C')
     
     pdf.set_font("Arial", "", 6)
@@ -117,7 +135,7 @@ def gerar_pdf(df, titulo="Completo"):
         elif prob >= 80: pdf.set_text_color(0, 0, 255)
         else: pdf.set_text_color(255, 140, 0)
         
-        pdf.cell(22, 6, str(row.get('Data','N/A'))[:10].encode('latin-1', 'replace').decode('latin-1'), 1, 0, '', fill)
+        pdf.cell(22, 6, str(row.get('Data','N/A')).encode('latin-1', 'replace').decode('latin-1'), 1, 0, '', fill)
         pdf.cell(40, 6, str(row.get('Liga','N/A'))[:22].encode('latin-1', 'replace').decode('latin-1'), 1, 0, '', fill)
         pdf.cell(12, 6, str(row.get('Rodada','N/A')), 1, 0, 'C', fill)
         pdf.cell(75, 6, str(row.get('Jogo','N/A'))[:38].encode('latin-1', 'replace').decode('latin-1'), 1, 0, '', fill)
@@ -126,22 +144,22 @@ def gerar_pdf(df, titulo="Completo"):
         pdf.cell(15, 6, str(row.get('Gols Casa U8',0)), 1, 0, 'C', fill)
         pdf.cell(15, 6, str(row.get('Gols Fora U8',0)), 1, 0, 'C', fill)
         pdf.cell(18, 6, str(row.get('Prob 0.5 HT','0%')), 1, 0, 'C', fill)
-        pdf.cell(18, 6, str(row.get('Prob 1.5 FT','0%')), 1, 0, 'C', fill) # NOVA CELULA
+        pdf.cell(18, 6, str(row.get('Prob 1.5 FT','0%')), 1, 0, 'C', fill)
         pdf.cell(18, 6, str(row.get('Prob 2.5 FT','0%')), 1, 0, 'C', fill)
         pdf.cell(15, 6, str(prob)+"%", 1, 1, 'C', fill)
         pdf.set_text_color(0, 0, 0)
     
     return bytes(pdf.output())
 
-st.sidebar.header("⚙️ Filtros")
+st.sidebar.header("⚙️ Filtros asc.bet")
 dias = st.sidebar.slider("Buscar proximos X dias", 1, 7, 3)
 limite_prob = st.sidebar.slider("Probabilidade Minima %", 60, 90, 70)
 mostrar_top10 = st.sidebar.checkbox("Mostrar apenas TOP 10 na tela")
 
 if st.button("🚀 ANALISAR JOGOS 70%+"):
     with st.spinner("Analisando 40 ligas... Isso pode demorar 2-3 min na primeira vez"):
-        data_de = datetime.now().strftime("%Y-%m-%d")
-        data_ate = (datetime.now() + timedelta(days=dias)).strftime("%Y-%m-%d")
+        data_de = datetime.now(TIMEZONE_MANAUS).strftime("%Y-%m-%d")
+        data_ate = (datetime.now(TIMEZONE_MANAUS) + timedelta(days=dias)).strftime("%Y-%m-%d")
         jogos = api_call("get_events", {"from": data_de, "to": data_ate})
         resultados = []
         jogos_analisados = 0
@@ -161,8 +179,9 @@ if st.button("🚀 ANALISAR JOGOS 70%+"):
                             tabela = api_call("get_standings", {"league_id": league_id})
                             pos_casa = next((t['overall_league_position'] for t in tabela if str(t.get('team_id')) == str(casa_id)), 'N/A')
                             pos_fora = next((t['overall_league_position'] for t in tabela if str(t.get('team_id')) == str(fora_id)), 'N/A')
+                            data_manaus = converter_horario(jogo.get('match_date'), jogo.get('match_time'))
                             resultados.append({
-                                "Data": f"{jogo.get('match_date')} {jogo.get('match_time')}",
+                                "Data": data_manaus,
                                 "Liga": jogo.get('league_name'),
                                 "Rodada": jogo.get('match_round', 'N/A'),
                                 "Jogo": f"{jogo.get('match_hometeam_name')} vs {jogo.get('match_awayteam_name')}",
@@ -171,7 +190,7 @@ if st.button("🚀 ANALISAR JOGOS 70%+"):
                                 "Gols Fora U8": f"{stats_fora['gols_m']:.2f}",
                                 "Media H2H 5J": media_h2h,
                                 "Prob 0.5 HT": f"{p_0_5}%",
-                                "Prob 1.5 FT": f"{p_1_5}%", # NOVA COLUNA
+                                "Prob 1.5 FT": f"{p_1_5}%",
                                 "Prob 2.5 FT": f"{p_2_5}%",
                                 "Prob %": prob_final
                             })
@@ -193,9 +212,9 @@ if st.button("🚀 ANALISAR JOGOS 70%+"):
             col1, col2 = st.columns(2)
             with col1:
                 pdf_completo = gerar_pdf(df_completo, "Completo")
-                st.download_button("📄 Baixar PDF COMPLETO", pdf_completo, "relatorio_completo_v24_7.pdf", "application/pdf")
+                st.download_button("📄 Baixar PDF COMPLETO", pdf_completo, "relatorio_completo_v25_0.pdf", "application/pdf")
             with col2:
                 pdf_top20 = gerar_pdf(df_top20, "TOP 20")
-                st.download_button("🏆 Baixar PDF TOP 20", pdf_top20, "relatorio_top20_v24_7.pdf", "application/pdf")
+                st.download_button("🏆 Baixar PDF TOP 20", pdf_top20, "relatorio_top20_v25_0.pdf", "application/pdf")
         else:
             st.warning(f"Nenhum jogo bateu {limite_prob}%+. Analisados: {jogos_analisados} jogos. Tente 65%")
