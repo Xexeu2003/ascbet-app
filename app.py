@@ -4,14 +4,14 @@ import pandas as pd
 from datetime import datetime, timedelta
 from fpdf import FPDF
 from scipy.stats import poisson
+from collections import defaultdict
 
-st.set_page_config(page_title="Analisador V26.7.1", layout="wide")
-st.title("Analisador V26.7.1 - asc.bet PRO")
-st.caption("Horario Manaus UTC-4 | ROI + Filtro Prob + Cores FIX")
+st.set_page_config(page_title="Analisador V26.8", layout="wide")
+st.title("Analisador V26.8 - asc.bet PRO")
+st.caption("Horario Manaus UTC-4 | Odd Real + Ranking + Filtro 85%+")
 
 API_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
 API_URL = "https://apiv2.apifootball.com/"
-ODD_PADRAO = 1.85
 
 def safe_int(valor):
     try: return int(valor) if valor is not None and valor!= '' else 0
@@ -65,7 +65,7 @@ def calcular_probabilidade_final(casa_id, fora_id, league_id):
     prob_final = min(round(prob_final), 99)
     return prob_final, round(p_0_5*100), round(p_1_5*100), round(p_2_5*100)
 
-def gerar_pdf_backtest(df, stats, periodo, stake):
+def gerar_pdf_backtest(df, stats, periodo, stake, odd):
     pdf = FPDF(orientation='L')
     pdf.add_page()
     pdf.set_font("Arial", "B", 50)
@@ -79,15 +79,16 @@ def gerar_pdf_backtest(df, stats, periodo, stake):
     pdf.cell(0, 12, "asc.bet - RELATORIO BACKTEST", ln=True, align="C")
     pdf.set_text_color(0, 0, 0)
     pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 10, f"Periodo: {periodo} | Stake: R${stake}", ln=True, align="C")
+    pdf.cell(0, 10, f"Periodo: {periodo} | Stake: R${stake} | Odd: {odd}", ln=True, align="C")
     
-    lucro = (stats['1.5FT']['green'] * stake * (ODD_PADRAO - 1)) - (stats['1.5FT']['total'] * stake)
-    roi = (lucro / (stats['1.5FT']['total'] * stake)) * 100 if stats['1.5FT']['total'] > 0 else 0
+    total_apostado_15 = stats['1.5FT']['total'] * stake
+    lucro = (stats['1.5FT']['green'] * stake * (odd - 1)) - (stats['1.5FT']['total'] * stake)
+    roi = (lucro / total_apostado_15) * 100 if total_apostado_15 > 0 else 0
     pdf.cell(0, 8, f"ROI 1.5FT: {roi:.1f}% | Lucro: R${lucro:.2f} | Taxa: {stats['1.5FT']['taxa']:.1f}%", ln=True, align="C")
     pdf.ln(3)
     
     pdf.set_font("Arial", "B", 6)
-    pdf.cell(22, 6, "Data", 1); pdf.cell(70, 6, "Jogo", 1); pdf.cell(15, 6, "Prob 1.5", 1, 0, 'C')
+    pdf.cell(22, 6, "Data", 1); pdf.cell(70, 6, "Jogo", 1); pdf.cell(15, 6, "Liga", 1); pdf.cell(15, 6, "Prob 1.5", 1, 0, 'C')
     pdf.cell(10, 6, "FT", 1, 0, 'C'); pdf.cell(15, 6, "1.5FT", 1, 1, 'C')
     
     pdf.set_font("Arial", "", 6)
@@ -97,7 +98,8 @@ def gerar_pdf_backtest(df, stats, periodo, stake):
         if row.get('1.5FT') == 'GREEN': pdf.set_text_color(0, 128, 0)
         else: pdf.set_text_color(200, 0, 0)
         pdf.cell(22, 5, str(row.get('Data','N/A')), 1, 0, '', fill)
-        pdf.cell(70, 5, str(row.get('Jogo','N/A'))[:35], 1, 0, '', fill)
+        pdf.cell(70, 5, str(row.get('Jogo','N/A'))[:30], 1, 0, '', fill)
+        pdf.cell(15, 5, str(row.get('Liga','N/A'))[:10], 1, 0, '', fill)
         pdf.cell(15, 5, str(row.get('Prob 1.5','0'))+"%", 1, 0, 'C', fill)
         pdf.cell(10, 5, str(row.get('FT','0')), 1, 0, 'C', fill)
         pdf.cell(15, 5, str(row.get('1.5FT','RED')), 1, 1, 'C', fill)
@@ -106,28 +108,30 @@ def gerar_pdf_backtest(df, stats, periodo, stake):
 
 LIGAS_MAP = {462:"Brasileirao A", 463:"Brasileirao B", 148:"Premier League", 149:"Championship", 3:"La Liga", 4:"Serie A"}
 
-tab1, tab2 = st.tabs(["ANALISADOR AO VIVO", "BACKTEST PRO V26.7.1"])
+tab1, tab2 = st.tabs(["ANALISADOR AO VIVO", "BACKTEST PRO V26.8"])
 
 with tab2:
     st.header("BACKTEST PRO - 0.5HT 1.5FT 2.5FT")
     st.warning("Limite: 50 jogos. API gratis = 100 chamadas/dia")
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         data_inicio = st.date_input("Data Inicio", datetime.now().date() - timedelta(days=7))
     with col2:
         data_fim = st.date_input("Data Fim", datetime.now().date() - timedelta(days=1))
     with col3:
         stake = st.number_input("Stake R$", 1, 1000, 10)
+    with col4:
+        odd_real = st.number_input("Odd Real da Casa", 1.10, 3.00, 1.85, 0.05) # ITEM 2
     
     ligas_disponiveis = ["Todas"] + list(LIGAS_MAP.values())
     liga_filtro = st.selectbox("Filtrar por Liga", ligas_disponiveis)
     
-    col4, col5 = st.columns(2)
-    with col4:
-        limite_bt = st.slider("Prob Minima Backtest", 60, 90, 70)
+    col5, col6 = st.columns(2)
     with col5:
-        filtro_prob = st.slider("Filtro Prob 1.5 na Tabela", 60, 100, 70)
+        limite_bt = st.slider("Prob Minima Backtest", 60, 90, 70)
+    with col6:
+        filtro_prob = st.slider("Filtro Prob 1.5 na Tabela", 60, 100, 85) # ITEM 1: 85% PADRAO
 
     if st.button("RODAR BACKTEST"):
         with st.spinner("Rodando backtest..."):
@@ -137,6 +141,7 @@ with tab2:
 
             resultados_bt = []
             stats = {"0.5HT": {"total":0, "green":0, "taxa":0}, "1.5FT": {"total":0, "green":0, "taxa":0}, "2.5FT": {"total":0, "green":0, "taxa":0}}
+            ranking_ligas = defaultdict(lambda: {"total":0, "green":0}) # ITEM 3
             cache_times = {}
 
             if isinstance(jogos, list):
@@ -151,6 +156,7 @@ with tab2:
                         casa_id = jogo.get('match_hometeam_id')
                         fora_id = jogo.get('match_awayteam_id')
                         league_id = safe_int(jogo.get('league_id'))
+                        nome_liga = LIGAS_MAP.get(league_id, "Outra")
 
                         cache_key = f"{casa_id}_{fora_id}"
                         if cache_key in cache_times:
@@ -173,6 +179,9 @@ with tab2:
                             if p_1_5 >= limite_bt:
                                 stats["1.5FT"]["total"] += 1
                                 if green_15: stats["1.5FT"]["green"] += 1
+                                # RANKING LIGAS
+                                ranking_ligas[nome_liga]["total"] += 1
+                                if green_15: ranking_ligas[nome_liga]["green"] += 1
                             if p_2_5 >= limite_bt:
                                 stats["2.5FT"]["total"] += 1
                                 if green_25: stats["2.5FT"]["green"] += 1
@@ -181,7 +190,7 @@ with tab2:
                                 resultados_bt.append({
                                     "Data": jogo.get('match_date'),
                                     "Jogo": f"{jogo.get('match_hometeam_name')} vs {jogo.get('match_awayteam_name')}",
-                                    "Liga": LIGAS_MAP.get(league_id, "Outra"),
+                                    "Liga": nome_liga,
                                     "Prob 0.5": p_0_5, "Prob 1.5": p_1_5, "Prob 2.5": p_2_5,
                                     "HT": gols_ht, "FT": gols_ft,
                                     "0.5HT": "GREEN" if green_05 else "RED",
@@ -201,16 +210,25 @@ with tab2:
 
                 st.success("BACKTEST CONCLUIDO")
                 
-                # ROI CORRIGIDO: só conta jogos 1.5FT
-                lucro = (stats['1.5FT']['green'] * stake * (ODD_PADRAO - 1)) - (stats['1.5FT']['total'] * stake)
-                roi = (lucro / (stats['1.5FT']['total'] * stake)) * 100 if stats['1.5FT']['total'] > 0 else 0
+                # ROI COM ODD REAL
+                total_apostado_15 = stats['1.5FT']['total'] * stake
+                lucro = (stats['1.5FT']['green'] * stake * (odd_real - 1)) - (stats['1.5FT']['total'] * stake)
+                roi = (lucro / total_apostado_15) * 100 if total_apostado_15 > 0 else 0
+                
                 col1, col2, col3, col4 = st.columns(4)
                 col1.metric("0.5HT", f"{stats['0.5HT']['taxa']:.1f}%", f"{stats['0.5HT']['green']}/{stats['0.5HT']['total']}")
                 col2.metric("1.5FT", f"{stats['1.5FT']['taxa']:.1f}%", f"{stats['1.5FT']['green']}/{stats['1.5FT']['total']}")
                 col3.metric("2.5FT", f"{stats['2.5FT']['taxa']:.1f}%", f"{stats['2.5FT']['green']}/{stats['2.5FT']['total']}")
                 col4.metric("ROI 1.5FT", f"{roi:.1f}%", f"R${lucro:.2f}")
 
-                # CORRECAO: troquei applymap por map
+                # RANKING DE LIGAS ITEM 3
+                st.subheader("RANKING DE LIGAS - 1.5FT")
+                df_ranking = pd.DataFrame([
+                    {"Liga": liga, "Jogos": dados["total"], "GREEN": dados["green"], "Taxa": (dados["green"]/dados["total"]*100 if dados["total"]>0 else 0)}
+                    for liga, dados in ranking_ligas.items()
+                ]).sort_values("Taxa", ascending=False)
+                st.dataframe(df_ranking.style.format({"Taxa": "{:.1f}%"}), use_container_width=True)
+
                 def color_result(val):
                     if val == 'GREEN': return 'background-color: #d4edda; color: #155724; font-weight: bold'
                     elif val == 'RED': return 'background-color: #f8d7da; color: #721c24; font-weight: bold'
@@ -219,7 +237,7 @@ with tab2:
                 st.dataframe(df_bt.style.map(color_result, subset=['0.5HT', '1.5FT', '2.5FT']), use_container_width=True)
                 
                 periodo = f"{data_inicio.strftime('%d/%m')} a {data_fim.strftime('%d/%m')}"
-                pdf_bytes = gerar_pdf_backtest(df_bt, stats, periodo, stake)
+                pdf_bytes = gerar_pdf_backtest(df_bt, stats, periodo, stake, odd_real)
                 st.download_button("Baixar Relatorio PDF", pdf_bytes, f"backtest_{data_inicio}.pdf", "application/pdf")
                 
                 csv_bt = df_bt.to_csv(index=False).encode('utf-8')
