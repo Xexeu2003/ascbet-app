@@ -6,12 +6,19 @@ from fpdf import FPDF
 from scipy.stats import poisson
 import io
 
-st.set_page_config(page_title="Analisador V26.0", layout="wide")
-st.title("🚀 Analisador V26.0 - asc.bet PRO")
-st.caption("Horário Manaus UTC-4 | Filtro por País | Marca D'agua | CSV + PDF")
+st.set_page_config(page_title="Analisador V26.1", layout="wide")
+st.title("🚀 Analisador V26.1 - asc.bet PRO")
+st.caption("Horário Manaus UTC-4 | Bandeiras | Copiar Bilhete | CSV + PDF")
 
 API_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
 API_URL = "https://apiv2.apifootball.com/"
+
+BANDEIRAS = {
+    "Brasil": "🇧🇷", "Argentina": "🇦🇷", "Chile": "🇨🇱", "Colombia": "🇨🇴", "Uruguai": "🇺🇾", "Paraguai": "🇵🇾", "Ecuador": "🇪🇨",
+    "Inglaterra": "🏴󠁧󠁢󠁥󠁮󠁧󠁿", "Espanha": "🇪🇸", "Alemanha": "🇩🇪", "Italia": "🇮🇹", "Franca": "🇫🇷", "Portugal": "🇵🇹", "Holanda": "🇳🇱",
+    "Belgica": "🇧🇪", "Turquia": "🇹🇷", "Russia": "🇷🇺", "Ucrania": "🇺🇦", "Austria": "🇦🇹", "Suica": "🇨🇭", "Escocia": "🏴󠁧󠁢󠁳󠁣󠁴󠁿",
+    "Grecia": "🇬🇷", "EUA": "🇺🇸", "Mexico": "🇲🇽", "Polonia": "🇵🇱", "Noruega": "🇳🇴", "Panama": "🇵🇦"
+}
 
 LIGAS_IDS = {
     "Brasil Serie A": 462, "Brasil Serie B": 463, "Brasil Serie C": 464, "Brasil Serie D": 465,
@@ -23,7 +30,7 @@ LIGAS_IDS = {
     "Chile": 29, "Uruguai": 116, "Paraguai": 83, "Ecuador": 37,
     "Turquia": 482, "Holanda": 244, "Belgica": 144, "Portugal": 94,
     "Russia": 406, "Ucrania": 488, "Austria": 132, "Suica": 444,
-    "Escocia": 172, "Grecia": 207
+    "Escocia": 172, "Grecia": 207, "I Liga": 207, "Eliteserien": 207, "Primera B": 29
 }
 
 PAISES = {
@@ -32,6 +39,22 @@ PAISES = {
     "Europa": [148, 149, 3, 4, 302, 303, 266, 267, 262, 263, 168, 169, 244, 94, 482, 144, 406, 488, 132, 444, 172, 207],
     "Sul-America": [2, 7, 10, 32, 29, 116, 83, 37]
 }
+
+def pegar_bandeira(liga_nome):
+    if "Brasil" in liga_nome: return "🇧🇷"
+    if "Premier" in liga_nome or "England" in liga_nome: return "🏴󠁧󠁢󠁥󠁮󠁧󠁿"
+    if "La Liga" in liga_nome: return "🇪🇸"
+    if "Bundesliga" in liga_nome: return "🇩🇪"
+    if "Serie A" in liga_nome or "Italia" in liga_nome: return "🇮🇹"
+    if "Ligue" in liga_nome: return "🇫🇷"
+    if "Portugal" in liga_nome: return "🇵🇹"
+    if "Holanda" in liga_nome or "Eredivisie" in liga_nome: return "🇳🇱"
+    if "Argentina" in liga_nome: return "🇦🇷"
+    if "Chile" in liga_nome or "Primera B" in liga_nome: return "🇨🇱"
+    if "Polonia" in liga_nome or "I Liga" in liga_nome: return "🇵🇱"
+    if "Noruega" in liga_nome or "Eliteserien" in liga_nome: return "🇳🇴"
+    if "Mexico" in liga_nome or "LPF" in liga_nome: return "🇲🇽"
+    return "🌍"
 
 def safe_int(valor):
     try: return int(valor) if valor is not None and valor!= '' else 0
@@ -111,32 +134,26 @@ def cor_prob(val):
 def gerar_pdf(df, titulo="Completo"):
     pdf = FPDF(orientation='L')
     pdf.add_page()
-
-    # MARCA D'AGUA
     pdf.set_font("Arial", "B", 50)
     pdf.set_text_color(230, 230, 230)
     pdf.rotate(45)
     pdf.text(50, 150, "asc.bet PRO")
     pdf.rotate(0)
     pdf.set_text_color(0, 0, 0)
-
     pdf.set_font("Arial", "B", 22)
     pdf.set_text_color(0, 128, 0)
     pdf.cell(0, 12, "asc.bet", ln=True, align="C")
     pdf.set_text_color(0, 0, 0)
-
     pdf.set_font("Arial", "B", 14)
     data_hoje = (datetime.now() - timedelta(hours=4)).strftime('%d/%m/%Y %H:%M')
-    pdf.cell(0, 10, f"Relatorio Analisador V26.0 - {titulo} - {data_hoje}", ln=True, align="C")
+    pdf.cell(0, 10, f"Relatorio Analisador V26.1 - {titulo} - {data_hoje}", ln=True, align="C")
     pdf.ln(3)
-
     pdf.set_font("Arial", "B", 6)
-    pdf.cell(22, 8, "Data", 1); pdf.cell(40, 8, "Liga", 1); pdf.cell(12, 8, "Rod", 1, 0, 'C')
-    pdf.cell(75, 8, "Jogo", 1); pdf.cell(18, 8, "Pos", 1, 0, 'C'); pdf.cell(15, 8, "H2H", 1, 0, 'C')
+    pdf.cell(22, 8, "Data", 1); pdf.cell(45, 8, "Liga", 1); pdf.cell(12, 8, "Rod", 1, 0, 'C')
+    pdf.cell(70, 8, "Jogo", 1); pdf.cell(18, 8, "Pos", 1, 0, 'C'); pdf.cell(15, 8, "H2H", 1, 0, 'C')
     pdf.cell(15, 8, "GC U8", 1, 0, 'C'); pdf.cell(15, 8, "GF U8", 1, 0, 'C')
     pdf.cell(18, 8, "Prob 0.5", 1, 0, 'C'); pdf.cell(18, 8, "Prob 1.5", 1, 0, 'C')
     pdf.cell(18, 8, "Prob 2.5", 1, 0, 'C'); pdf.cell(15, 8, "Prob %", 1, 1, 'C')
-
     pdf.set_font("Arial", "", 6)
     for i, row in df.iterrows():
         fill = True if i % 2 == 0 else False
@@ -146,9 +163,9 @@ def gerar_pdf(df, titulo="Completo"):
         elif prob >= 80: pdf.set_text_color(0, 0, 255)
         else: pdf.set_text_color(255, 140, 0)
         pdf.cell(22, 6, str(row.get('Data','N/A')).encode('latin-1', 'replace').decode('latin-1'), 1, 0, '', fill)
-        pdf.cell(40, 6, str(row.get('Liga','N/A'))[:22].encode('latin-1', 'replace').decode('latin-1'), 1, 0, '', fill)
+        pdf.cell(45, 6, str(row.get('Liga','N/A'))[:25].encode('latin-1', 'replace').decode('latin-1'), 1, 0, '', fill)
         pdf.cell(12, 6, str(row.get('Rodada','N/A')), 1, 0, 'C', fill)
-        pdf.cell(75, 6, str(row.get('Jogo','N/A'))[:38].encode('latin-1', 'replace').decode('latin-1'), 1, 0, '', fill)
+        pdf.cell(70, 6, str(row.get('Jogo','N/A'))[:35].encode('latin-1', 'replace').decode('latin-1'), 1, 0, '', fill)
         pdf.cell(18, 6, str(row.get('Pos','N/A')), 1, 0, 'C', fill)
         pdf.cell(15, 6, str(row.get('Media H2H 5J',0)), 1, 0, 'C', fill)
         pdf.cell(15, 6, str(row.get('Gols Casa U8',0)), 1, 0, 'C', fill)
@@ -159,6 +176,14 @@ def gerar_pdf(df, titulo="Completo"):
         pdf.cell(15, 6, str(prob)+"%", 1, 1, 'C', fill)
         pdf.set_text_color(0, 0, 0)
     return bytes(pdf.output())
+
+def gerar_texto_bilhete(df_top3):
+    data = (datetime.now() - timedelta(hours=4)).strftime('%d/%m')
+    texto = f"BILHETE asc.bet PRO {data}\n\n"
+    for i, row in df_top3.iterrows():
+        texto += f"{i+1}. {row['Jogo']} - Over 1.5 {row['Prob 1.5 FT']} - Conf: {row['Prob %']}%\n"
+    texto += f"\nBanca: 1% por jogo | GL 🍀"
+    return texto
 
 st.sidebar.header("⚙️ Filtros asc.bet")
 pais = st.sidebar.selectbox("🌍 Filtrar por País", list(PAISES.keys()))
@@ -178,7 +203,7 @@ if st.button("🚀 ANALISAR JOGOS 70%+"):
         if isinstance(jogos, list):
             total_jogos = len(jogos)
             for idx, jogo in enumerate(jogos):
-                if safe_int(jogo.get('league_id')) in ligas_para_buscar: # FILTRO PAIS
+                if safe_int(jogo.get('league_id')) in ligas_para_buscar:
                     jogos_analisados += 1
                     try:
                         casa_id = jogo.get('match_hometeam_id')
@@ -190,8 +215,9 @@ if st.button("🚀 ANALISAR JOGOS 70%+"):
                             pos_casa = next((t['overall_league_position'] for t in tabela if str(t.get('team_id')) == str(casa_id)), 'N/A')
                             pos_fora = next((t['overall_league_position'] for t in tabela if str(t.get('team_id')) == str(fora_id)), 'N/A')
                             data_manaus = converter_horario(jogo.get('match_date'), jogo.get('match_time'))
+                            liga_com_bandeira = f"{pegar_bandeira(jogo.get('league_name'))} {jogo.get('league_name')}"
                             resultados.append({
-                                "Data": data_manaus, "Liga": jogo.get('league_name'), "Rodada": jogo.get('match_round', 'N/A'),
+                                "Data": data_manaus, "Liga": liga_com_bandeira, "Rodada": jogo.get('match_round', 'N/A'),
                                 "Jogo": f"{jogo.get('match_hometeam_name')} vs {jogo.get('match_awayteam_name')}",
                                 "Pos": f"{pos_casa} vs {pos_fora}", "Gols Casa U8": f"{stats_casa['gols_m']:.2f}",
                                 "Gols Fora U8": f"{stats_fora['gols_m']:.2f}", "Media H2H 5J": media_h2h,
@@ -202,9 +228,10 @@ if st.button("🚀 ANALISAR JOGOS 70%+"):
 
         if resultados:
             df_completo = pd.DataFrame(resultados).sort_values("Prob %", ascending=False)
-            df_90 = df_completo[df_completo['Prob %'] >= 90] # ABA 90%+
+            df_90 = df_completo[df_completo['Prob %'] >= 90]
             df_tela = df_completo.head(10) if mostrar_top10 else df_completo
             df_top20 = df_completo.head(20)
+            df_top3 = df_completo.head(3)
 
             st.success(f"✅ {len(df_completo)} jogos com {limite_prob}%+ encontrados! Analisados: {jogos_analisados} | Pais: {pais}")
 
@@ -217,16 +244,21 @@ if st.button("🚀 ANALISAR JOGOS 70%+"):
                 else:
                     st.info("Nenhum jogo 90%+ encontrado hoje")
 
+            # BOTAO COPIAR BILHETE
+            if not df_top3.empty:
+                texto_bilhete = gerar_texto_bilhete(df_top3)
+                st.text_area("📋 Copiar Bilhete Top 3:", texto_bilhete, height=150)
+
             # EXPORT CSV
             csv = df_completo.to_csv(index=False).encode('utf-8')
-            st.download_button("📊 Baixar CSV", csv, "relatorio_v26_0.csv", "text/csv")
+            st.download_button("📊 Baixar CSV", csv, "relatorio_v26_1.csv", "text/csv")
 
             col1, col2 = st.columns(2)
             with col1:
                 pdf_completo = gerar_pdf(df_completo, "Completo")
-                st.download_button("📄 Baixar PDF COMPLETO", pdf_completo, "relatorio_completo_v26_0.pdf", "application/pdf")
+                st.download_button("📄 Baixar PDF COMPLETO", pdf_completo, "relatorio_completo_v26_1.pdf", "application/pdf")
             with col2:
                 pdf_top20 = gerar_pdf(df_top20, "TOP 20")
-                st.download_button("🏆 Baixar PDF TOP 20", pdf_top20, "relatorio_top20_v26_0.pdf", "application/pdf")
+                st.download_button("🏆 Baixar PDF TOP 20", pdf_top20, "relatorio_top20_v26_1.pdf", "application/pdf")
         else:
             st.warning(f"Nenhum jogo bateu {limite_prob}%+. Analisados: {jogos_analisados} jogos. Tente 65%")
