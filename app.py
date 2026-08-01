@@ -4,10 +4,11 @@ import pandas as pd
 from datetime import datetime, timedelta
 from fpdf import FPDF
 from scipy.stats import poisson
+import io
 
-st.set_page_config(page_title="Analisador V26.5", layout="wide")
-st.title("Analisador V26.5 - asc.bet PRO")
-st.caption("Horario Manaus UTC-4 | Backtest Otimizado 0.5HT 1.5FT 2.5FT")
+st.set_page_config(page_title="Analisador V26.6", layout="wide")
+st.title("Analisador V26.6 - asc.bet PRO")
+st.caption("Horario Manaus UTC-4 | Backtest com Periodo + PDF + Alerta")
 
 API_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
 API_URL = "https://apiv2.apifootball.com/"
@@ -19,20 +20,11 @@ def pegar_bandeira(liga_nome):
     if "la liga" in liga or "espanha" in liga: return "ES"
     if "bundesliga" in liga: return "DE"
     if "serie a" in liga or "italia" in liga: return "IT"
-    if "ligue" in liga: return "FR"
-    if "portugal" in liga: return "PT"
     return "GLB"
 
 def safe_int(valor):
     try: return int(valor) if valor is not None and valor!= '' else 0
     except: return 0
-
-def converter_horario(data_str, hora_str):
-    try:
-        dt_utc = datetime.strptime(f"{data_str} {hora_str}", "%Y-%m-%d %H:%M")
-        dt_manaus = dt_utc - timedelta(hours=4)
-        return dt_manaus, dt_manaus.strftime("%d/%m %H:%M")
-    except: return datetime.now(), f"{data_str} {hora_str}"
 
 @st.cache_data(ttl=3600)
 def api_call(action, params_extra):
@@ -82,49 +74,89 @@ def calcular_probabilidade_final(casa_id, fora_id, league_id):
     prob_final = min(round(prob_final), 99)
     return prob_final, round(p_0_5*100), round(p_1_5*100), round(p_2_5*100)
 
-def cor_prob(val):
-    if val >= 90: return 'background-color: #d4edda; color: #155724'
-    elif val >= 80: return 'background-color: #cce5ff; color: #004085'
-    else: return 'background-color: #fff3cd; color: #856404'
+def gerar_pdf_backtest(df, stats, periodo):
+    pdf = FPDF(orientation='L')
+    pdf.add_page()
+    pdf.set_font("Arial", "B", 50)
+    pdf.set_text_color(230, 230, 230)
+    pdf.rotate(45)
+    pdf.text(50, 150, "asc.bet PRO")
+    pdf.rotate(0)
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font("Arial", "B", 22)
+    pdf.set_text_color(0, 128, 0)
+    pdf.cell(0, 12, "asc.bet - RELATORIO BACKTEST", ln=True, align="C")
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 10, f"Periodo: {periodo}", ln=True, align="C")
+    pdf.ln(3)
+    
+    pdf.set_font("Arial", "B", 10)
+    pdf.cell(0, 8, f"0.5HT: {stats['0.5HT']['taxa']:.1f}% | 1.5FT: {stats['1.5FT']['taxa']:.1f}% | 2.5FT: {stats['2.5FT']['taxa']:.1f}%", ln=True, align="C")
+    pdf.ln(3)
+    
+    pdf.set_font("Arial", "B", 6)
+    pdf.cell(22, 6, "Data", 1); pdf.cell(70, 6, "Jogo", 1); pdf.cell(18, 6, "Prob 0.5", 1, 0, 'C')
+    pdf.cell(18, 6, "Prob 1.5", 1, 0, 'C'); pdf.cell(18, 6, "Prob 2.5", 1, 0, 'C')
+    pdf.cell(10, 6, "HT", 1, 0, 'C'); pdf.cell(10, 6, "FT", 1, 0, 'C')
+    pdf.cell(15, 6, "0.5HT", 1, 0, 'C'); pdf.cell(15, 6, "1.5FT", 1, 0, 'C'); pdf.cell(15, 6, "2.5FT", 1, 1, 'C')
+    
+    pdf.set_font("Arial", "", 6)
+    for i, row in df.iterrows():
+        fill = True if i % 2 == 0 else False
+        if fill: pdf.set_fill_color(240, 240, 240)
+        pdf.cell(22, 5, str(row.get('Data','N/A')), 1, 0, '', fill)
+        pdf.cell(70, 5, str(row.get('Jogo','N/A'))[:35], 1, 0, '', fill)
+        pdf.cell(18, 5, str(row.get('Prob 0.5','0')), 1, 0, 'C', fill)
+        pdf.cell(18, 5, str(row.get('Prob 1.5','0')), 1, 0, 'C', fill)
+        pdf.cell(18, 5, str(row.get('Prob 2.5','0')), 1, 0, 'C', fill)
+        pdf.cell(10, 5, str(row.get('HT','0')), 1, 0, 'C', fill)
+        pdf.cell(10, 5, str(row.get('FT','0')), 1, 0, 'C', fill)
+        pdf.cell(15, 5, str(row.get('0.5HT','RED')), 1, 0, 'C', fill)
+        pdf.cell(15, 5, str(row.get('1.5FT','RED')), 1, 0, 'C', fill)
+        pdf.cell(15, 5, str(row.get('2.5FT','RED')), 1, 1, 'C', fill)
+    return bytes(pdf.output())
 
-LIGAS_IDS = [462, 463, 464, 465, 148, 149, 3, 4, 2, 7, 302, 303, 266, 267, 262, 263, 168, 169, 244, 94]
-PAISES = {"Todos": LIGAS_IDS, "Brasil": [462, 463, 464, 465], "Europa": [148, 149, 3, 4, 302, 303, 266, 267, 262, 263, 168, 169, 244, 94]}
+LIGAS_MAP = {462:"Brasileirao A", 463:"Brasileirao B", 464:"Brasileirao C", 465:"Brasileirao D", 148:"Premier League", 149:"Championship", 3:"La Liga", 4:"Serie A"}
+LIGAS_IDS = list(LIGAS_MAP.keys())
 
-tab1, tab2 = st.tabs(["ANALISADOR AO VIVO", "BACKTEST 7 DIAS"])
+tab1, tab2 = st.tabs(["ANALISADOR AO VIVO", "BACKTEST PRO"])
 
 with tab1:
     st.sidebar.header("Filtros asc.bet")
-    pais = st.sidebar.selectbox("Filtrar por Pais", list(PAISES.keys()))
-    dias = st.sidebar.slider("Buscar proximos X dias", 1, 7, 3)
-    limite_prob = st.sidebar.slider("Probabilidade Minima %", 60, 90, 70)
-    
-    if st.button("ANALISAR JOGOS 70%+"):
-        st.info("Use a V26.3 para analise ao vivo completa")
+    st.info("Use a V26.5 para analise ao vivo")
 
 with tab2:
-    st.header("BACKTEST 7 DIAS - 0.5HT 1.5FT 2.5FT")
+    st.header("BACKTEST PRO - 0.5HT 1.5FT 2.5FT")
     st.warning("Limite: 50 jogos. API gratis = 100 chamadas/dia")
 
-    data_fim = st.date_input("Data Fim", datetime.now().date() - timedelta(days=1))
-    data_inicio = data_fim - timedelta(days=6)
-    st.write(f"Periodo: {data_inicio.strftime('%d/%m')} a {data_fim.strftime('%d/%m')}")
+    col1, col2 = st.columns(2)
+    with col1:
+        data_inicio = st.date_input("Data Inicio", datetime.now().date() - timedelta(days=7))
+    with col2:
+        data_fim = st.date_input("Data Fim", datetime.now().date() - timedelta(days=1))
+    
+    ligas_disponiveis = ["Todas"] + list(LIGAS_MAP.values())
+    liga_filtro = st.selectbox("Filtrar por Liga", ligas_disponiveis)
+    limite_bt = st.slider("Prob Minima Backtest", 60, 90, 70)
 
-    limite_bt = st.slider("Prob Minima Backtest", 60, 90, 70, key="bt")
-
-    if st.button("RODAR BACKTEST 7 DIAS"):
+    if st.button("RODAR BACKTEST"):
         with st.spinner("Rodando backtest... 40 segundos"):
             data_de = data_inicio.strftime("%Y-%m-%d")
             data_ate = data_fim.strftime("%Y-%m-%d")
             jogos = api_call("get_events", {"from": data_de, "to": data_ate})
 
             resultados_bt = []
-            stats = {"0.5HT": {"total":0, "green":0}, "1.5FT": {"total":0, "green":0}, "2.5FT": {"total":0, "green":0}}
+            stats = {"0.5HT": {"total":0, "green":0, "taxa":0}, "1.5FT": {"total":0, "green":0, "taxa":0}, "2.5FT": {"total":0, "green":0, "taxa":0}}
             cache_times = {}
 
             if isinstance(jogos, list):
                 jogos_finalizados = [j for j in jogos if j.get('match_status') == 'Finished'][:50]
+                if liga_filtro!= "Todas":
+                    liga_id_filtro = [k for k, v in LIGAS_MAP.items() if v == liga_filtro][0]
+                    jogos_finalizados = [j for j in jogos_finalizados if safe_int(j.get('league_id')) == liga_id_filtro]
+                
                 progress = st.progress(0)
-
                 for idx, jogo in enumerate(jogos_finalizados):
                     try:
                         casa_id = jogo.get('match_hometeam_id')
@@ -159,6 +191,7 @@ with tab2:
                             resultados_bt.append({
                                 "Data": jogo.get('match_date'),
                                 "Jogo": f"{jogo.get('match_hometeam_name')} vs {jogo.get('match_awayteam_name')}",
+                                "Liga": LIGAS_MAP.get(league_id, "Outra"),
                                 "Prob 0.5": p_0_5, "Prob 1.5": p_1_5, "Prob 2.5": p_2_5,
                                 "HT": gols_ht, "FT": gols_ft,
                                 "0.5HT": "GREEN" if green_05 else "RED",
@@ -170,16 +203,33 @@ with tab2:
 
             if resultados_bt:
                 df_bt = pd.DataFrame(resultados_bt)
+                
+                for m in stats:
+                    total = stats[m]["total"]
+                    green = stats[m]["green"]
+                    stats[m]["taxa"] = (green / total) * 100 if total > 0 else 0
+
                 st.success("BACKTEST CONCLUIDO")
+                
+                # ALERTA ITEM 3
+                if stats["1.5FT"]["taxa"] < 70:
+                    st.error(f"ALERTA: Taxa 1.5FT caiu para {stats['1.5FT']['taxa']:.1f}% Abaixo de 70%")
+                else:
+                    st.success(f"ESTRATEGIA VALIDADA: Taxa 1.5FT em {stats['1.5FT']['taxa']:.1f}%")
+
                 col1, col2, col3 = st.columns(3)
-                for i, mercado in enumerate(["0.5HT", "1.5FT", "2.5FT"]):
-                    total = stats[mercado]["total"]
-                    green = stats[mercado]["green"]
-                    taxa = (green / total) * 100 if total > 0 else 0
-                    [col1, col2, col3][i].metric(mercado, f"{taxa:.1f}%", f"{green}/{total}")
+                col1.metric("0.5HT", f"{stats['0.5HT']['taxa']:.1f}%", f"{stats['0.5HT']['green']}/{stats['0.5HT']['total']}")
+                col2.metric("1.5FT", f"{stats['1.5FT']['taxa']:.1f}%", f"{stats['1.5FT']['green']}/{stats['1.5FT']['total']}")
+                col3.metric("2.5FT", f"{stats['2.5FT']['taxa']:.1f}%", f"{stats['2.5FT']['green']}/{stats['2.5FT']['total']}")
 
                 st.dataframe(df_bt, use_container_width=True)
+                
+                # EXPORTAR PDF ITEM 2
+                periodo = f"{data_inicio.strftime('%d/%m')} a {data_fim.strftime('%d/%m')}"
+                pdf_bytes = gerar_pdf_backtest(df_bt, stats, periodo)
+                st.download_button("Baixar Relatorio PDF", pdf_bytes, f"backtest_{data_inicio}.pdf", "application/pdf")
+                
                 csv_bt = df_bt.to_csv(index=False).encode('utf-8')
-                st.download_button("Baixar Backtest CSV", csv_bt, f"backtest_7dias_{data_inicio}.csv", "text/csv")
+                st.download_button("Baixar Backtest CSV", csv_bt, f"backtest_{data_inicio}.csv", "text/csv")
             else:
                 st.warning("Nenhum jogo encontrado no periodo")
