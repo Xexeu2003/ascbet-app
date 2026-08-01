@@ -7,9 +7,9 @@ from scipy.stats import poisson
 from collections import defaultdict
 import time
 
-st.set_page_config(page_title="Analisador V26.9.6", layout="wide")
-st.title("Analisador V26.9.6 - asc.bet PRO")
-st.caption("Horario Manaus UTC-4 | AO VIVO Multi-Liga")
+st.set_page_config(page_title="Analisador V26.9.7", layout="wide")
+st.title("Analisador V26.9.7 - asc.bet PRO")
+st.caption("Horario Manaus UTC-4 | 40 Ligas | AO VIVO + BACKTEST")
 
 API_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
 API_URL = "https://apiv2.apifootball.com/"
@@ -66,27 +66,35 @@ def calcular_probabilidade_final(casa_id, fora_id, league_id):
     prob_final = min(round(prob_final), 99)
     return prob_final, round(p_0_5*100), round(p_1_5*100), round(p_2_5*100)
 
+# AS 40 LIGAS VOLTARAM
 LIGAS_MAP = {
-    462:"Brasileirao A", 463:"Brasileirao B", 148:"Premier League", 
-    302:"K League 1", 310:"J1 League", 253:"Campeonato Chileno", 
-    339:"Allsvenskan", 340:"Eliteserien", 342:"Veikkausliiga",
-    271:"Superliga Chinesa", 350:"Besta deild karla", 
-    128:"Liga Profesional Argentina", 250:"Liga BetPlay Dimayor", 344:"MLS",
+    462:"Brasileirao A", 463:"Brasileirao B", 148:"Premier League", 152:"Championship",
+    149:"La Liga", 207:"La Liga 2", 175:"Bundesliga", 176:"2. Bundesliga",
+    262:"Serie A", 263:"Serie B", 168:"Ligue 1", 169:"Ligue 2",
+    302:"K League 1", 303:"K League 2", 310:"J1 League", 311:"J2 League",
+    253:"Campeonato Chileno", 255:"Primera B Chile", 339:"Allsvenskan", 340:"Eliteserien",
+    341:"Superliga Dinamarca", 342:"Veikkausliiga", 343:"Premier League Russia",
+    344:"MLS", 345:"Liga MX", 346:"Eredivisie", 347:"Liga Portugal",
+    348:"Super Lig Turquia", 349:"Premier League Ucrania", 350:"Besta deild karla",
+    351:"Superliga Grecia", 352:"Liga I Romania", 353:"Premijer Liga Bosnia",
+    354:"HNL Croacia", 355:"Fortuna Liga Tcheca", 356:"Ekstraklasa Polonia",
+    357:"Superliga Suica", 358:"Austrian Bundesliga", 359:"Jupiler Pro League",
+    271:"Superliga Chinesa", 128:"Liga Profesional Argentina", 250:"Liga BetPlay Dimayor"
 }
 
-tab1, tab2 = st.tabs(["ANALISADOR AO VIVO", "BACKTEST PRO V26.9.6"])
+tab1, tab2 = st.tabs(["ANALISADOR AO VIVO", "BACKTEST PRO V26.9.7"])
 
-# ABA 1: AO VIVO MULTI-LIGA
+# ABA 1: AO VIVO 40 LIGAS
 with tab1:
-    st.header("ANALISADOR AO VIVO - MULTI LIGA")
-    st.warning("Cuidado: API gratis = 100 chamadas/dia. Selecione max 4 ligas")
+    st.header("ANALISADOR AO VIVO - 40 LIGAS")
+    st.warning("Cuidado: API gratis = 100 chamadas/dia. Nao selecione todas de uma vez")
     
     col1, col2, col3 = st.columns(3)
     with col1:
         ligas_ao_vivo = st.multiselect(
             "Selecionar Ligas Ao Vivo", 
             list(LIGAS_MAP.values()), 
-            default=["K League 1", "J1 League", "Brasileirao A"]
+            default=["K League 1", "J1 League", "Brasileirao A", "Premier League"]
         )
     with col2:
         filtro_prob_vivo = st.slider("Filtro Prob Minima", 70, 95, 85)
@@ -105,7 +113,6 @@ with tab1:
                 league_id = safe_int(jogo.get('league_id'))
                 status = jogo.get('match_status')
                 
-                # Pega jogo AO VIVO ou que começou nos ultimos 15min
                 if league_id in ids_foco and status not in ['Finished', 'Not Started', 'Postponed', 'Cancelled', 'AET']:
                     try:
                         casa_id = jogo.get('match_hometeam_id')
@@ -136,12 +143,12 @@ with tab1:
             
             st.dataframe(df_vivo.style.map(color_prob, subset=['Prob 1.5', 'Prob 2.5']), use_container_width=True)
         else:
-            st.warning(f"Nenhum jogo ao vivo encontrado. 1. Baixe o filtro pra 80%  2. Adicione mais ligas")
+            st.warning(f"Nenhum jogo ao vivo encontrado. 1. Baixe o filtro pra 80%  2. Selecione mais ligas")
 
-# ABA 2: BACKTEST - IGUAL A ANTERIOR
+# ABA 2: BACKTEST 40 LIGAS
 with tab2:
-    st.header("BACKTEST PRO - BUSCA POR LIGA")
-    st.info("DICA: Use Ago/Set 2025 pra K League e J1")
+    st.header("BACKTEST PRO - 40 LIGAS")
+    st.info("DICA: K League 1 e J1 League sao as melhores pra 1.5FT")
 
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -154,7 +161,7 @@ with tab2:
         odd_real = st.number_input("Odd Real da Casa", 1.10, 3.00, 1.90, 0.05)
     
     ligas_disponiveis = list(LIGAS_MAP.values())
-    ligas_selecionadas = st.multiselect("Selecionar Ligas Backtest", ligas_disponiveis, default=["K League 1", "J1 League"])
+    ligas_selecionadas = st.multiselect("Selecionar Ligas Backtest", ligas_disponiveis, default=["K League 1", "J1 League", "Brasileirao A"])
     
     col5, col6 = st.columns(2)
     with col5:
