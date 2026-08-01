@@ -6,9 +6,9 @@ from fpdf import FPDF
 from scipy.stats import poisson
 import io
 
-st.set_page_config(page_title="Analisador V26.2", layout="wide")
-st.title("🚀 Analisador V26.2 - asc.bet PRO")
-st.caption("Horario Manaus UTC-4 | Bandeiras | Copiar Bilhete | CSV + PDF")
+st.set_page_config(page_title="Analisador V26.3", layout="wide")
+st.title("Analisador V26.3 - asc.bet PRO")
+st.caption("Horario Manaus UTC-4 | Filtro por Liga | Ordenado por Liga e Data")
 
 API_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
 API_URL = "https://apiv2.apifootball.com/"
@@ -38,8 +38,8 @@ def converter_horario(data_str, hora_str):
     try:
         dt_utc = datetime.strptime(f"{data_str} {hora_str}", "%Y-%m-%d %H:%M")
         dt_manaus = dt_utc - timedelta(hours=4)
-        return dt_manaus.strftime("%d/%m %H:%M")
-    except: return f"{data_str} {hora_str}"
+        return dt_manaus, dt_manaus.strftime("%d/%m %H:%M")
+    except: return datetime.now(), f"{data_str} {hora_str}"
 
 @st.cache_data(ttl=3600)
 def api_call(action, params_extra):
@@ -120,7 +120,7 @@ def gerar_pdf(df, titulo="Completo"):
     pdf.set_text_color(0, 0, 0)
     pdf.set_font("Arial", "B", 14)
     data_hoje = (datetime.now() - timedelta(hours=4)).strftime('%d/%m/%Y %H:%M')
-    pdf.cell(0, 10, f"Relatorio Analisador V26.2 - {titulo} - {data_hoje}", ln=True, align="C")
+    pdf.cell(0, 10, f"Relatorio Analisador V26.3 - {titulo} - {data_hoje}", ln=True, align="C")
     pdf.ln(3)
     pdf.set_font("Arial", "B", 6)
     pdf.cell(22, 8, "Data", 1); pdf.cell(45, 8, "Liga", 1); pdf.cell(12, 8, "Rod", 1, 0, 'C')
@@ -164,6 +164,23 @@ PAISES = {"Todos": LIGAS_IDS, "Brasil": [462, 463, 464, 465], "Europa": [148, 14
 
 st.sidebar.header("Filtros asc.bet")
 pais = st.sidebar.selectbox("Filtrar por Pais", list(PAISES.keys()))
+
+@st.cache_data(ttl=3600)
+def carregar_ligas(pais_selecionado):
+    ligas_para_buscar = PAISES[pais_selecionado]
+    data_de = (datetime.now() - timedelta(hours=4)).strftime("%Y-%m-%d")
+    data_ate = ((datetime.now() - timedelta(hours=4)) + timedelta(days=7)).strftime("%Y-%m-%d")
+    jogos = api_call("get_events", {"from": data_de, "to": data_ate})
+    ligas_encontradas = set()
+    if isinstance(jogos, list):
+        for jogo in jogos:
+            if safe_int(jogo.get('league_id')) in ligas_para_buscar:
+                ligas_encontradas.add(jogo.get('league_name'))
+    return sorted(list(ligas_encontradas))
+
+ligas_disponiveis = carregar_ligas(pais)
+liga_filtro = st.sidebar.selectbox("Filtrar por Liga", ["Todas"] + ligas_disponiveis)
+
 dias = st.sidebar.slider("Buscar proximos X dias", 1, 7, 3)
 limite_prob = st.sidebar.slider("Probabilidade Minima %", 60, 90, 70)
 mostrar_top10 = st.sidebar.checkbox("Mostrar apenas TOP 10 na tela")
@@ -180,22 +197,27 @@ if st.button("ANALISAR JOGOS 70%+"):
         if isinstance(jogos, list):
             total_jogos = len(jogos)
             for idx, jogo in enumerate(jogos):
-                if safe_int(jogo.get('league_id')) in ligas_para_buscar:
+                league_id = safe_int(jogo.get('league_id'))
+                league_name = jogo.get('league_name')
+
+                if league_id in ligas_para_buscar:
+                    if liga_filtro!= "Todas" and league_name!= liga_filtro:
+                        continue
+
                     jogos_analisados += 1
                     try:
                         casa_id = jogo.get('match_hometeam_id')
                         fora_id = jogo.get('match_awayteam_id')
-                        league_id = jogo.get('league_id')
                         prob_final, p_0_5, p_1_5, p_2_5, media_h2h, stats_casa, stats_fora = calcular_probabilidade_final(casa_id, fora_id, league_id)
                         if prob_final >= limite_prob:
                             tabela = api_call("get_standings", {"league_id": league_id})
                             pos_casa = next((t['overall_league_position'] for t in tabela if str(t.get('team_id')) == str(casa_id)), 'N/A')
                             pos_fora = next((t['overall_league_position'] for t in tabela if str(t.get('team_id')) == str(fora_id)), 'N/A')
-                            data_manaus = converter_horario(jogo.get('match_date'), jogo.get('match_time'))
-                            bandeira = pegar_bandeira(jogo.get('league_name'))
-                            liga_com_bandeira = f"[{bandeira}] {jogo.get('league_name')}"
+                            dt_obj, data_manaus = converter_horario(jogo.get('match_date'), jogo.get('match_time'))
+                            bandeira = pegar_bandeira(league_name)
+                            liga_com_bandeira = f"[{bandeira}] {league_name}"
                             resultados.append({
-                                "Data": data_manaus, "Liga": liga_com_bandeira, "Rodada": jogo.get('match_round', 'N/A'),
+                                "DataObj": dt_obj, "Data": data_manaus, "Liga": liga_com_bandeira, "LigaNome": league_name, "Rodada": jogo.get('match_round', 'N/A'),
                                 "Jogo": f"{jogo.get('match_hometeam_name')} vs {jogo.get('match_awayteam_name')}",
                                 "Pos": f"{pos_casa} vs {pos_fora}", "Gols Casa U8": f"{stats_casa['gols_m']:.2f}",
                                 "Gols Fora U8": f"{stats_fora['gols_m']:.2f}", "Media H2H 5J": media_h2h,
@@ -205,13 +227,17 @@ if st.button("ANALISAR JOGOS 70%+"):
                 progress.progress((idx + 1) / total_jogos)
 
         if resultados:
-            df_completo = pd.DataFrame(resultados).sort_values("Prob %", ascending=False)
+            df_completo = pd.DataFrame(resultados)
+            # ORGANIZAR POR LIGA E DATA
+            df_completo = df_completo.sort_values(["LigaNome", "DataObj"], ascending=[True, True])
+            df_completo = df_completo.drop(columns=['DataObj', 'LigaNome'])
+
             df_90 = df_completo[df_completo['Prob %'] >= 90]
             df_tela = df_completo.head(10) if mostrar_top10 else df_completo
             df_top20 = df_completo.head(20)
-            df_top3 = df_completo.head(3)
+            df_top3 = df_completo.sort_values("Prob %", ascending=False).head(3)
 
-            st.success(f"{len(df_completo)} jogos com {limite_prob}%+ encontrados! Analisados: {jogos_analisados} | Pais: {pais}")
+            st.success(f"{len(df_completo)} jogos com {limite_prob}%+ encontrados! Analisados: {jogos_analisados} | Pais: {pais} | Liga: {liga_filtro}")
 
             tab1, tab2 = st.tabs(["Todos 70%+", "So 90%+"])
             with tab1:
@@ -227,14 +253,14 @@ if st.button("ANALISAR JOGOS 70%+"):
                 st.text_area("Copiar Bilhete Top 3:", texto_bilhete, height=150)
 
             csv = df_completo.to_csv(index=False).encode('utf-8')
-            st.download_button("Baixar CSV", csv, "relatorio_v26_2.csv", "text/csv")
+            st.download_button("Baixar CSV", csv, "relatorio_v26_3.csv", "text/csv")
 
             col1, col2 = st.columns(2)
             with col1:
                 pdf_completo = gerar_pdf(df_completo, "Completo")
-                st.download_button("Baixar PDF COMPLETO", pdf_completo, "relatorio_completo_v26_2.pdf", "application/pdf")
+                st.download_button("Baixar PDF COMPLETO", pdf_completo, "relatorio_completo_v26_3.pdf", "application/pdf")
             with col2:
                 pdf_top20 = gerar_pdf(df_top20, "TOP 20")
-                st.download_button("Baixar PDF TOP 20", pdf_top20, "relatorio_top20_v26_2.pdf", "application/pdf")
+                st.download_button("Baixar PDF TOP 20", pdf_top20, "relatorio_top20_v26_3.pdf", "application/pdf")
         else:
             st.warning(f"Nenhum jogo bateu {limite_prob}%+. Analisados: {jogos_analisados} jogos. Tente 65%")
