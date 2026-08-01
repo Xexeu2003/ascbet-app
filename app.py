@@ -6,9 +6,9 @@ from fpdf import FPDF
 from scipy.stats import poisson
 from collections import defaultdict
 
-st.set_page_config(page_title="Analisador V26.8", layout="wide")
-st.title("Analisador V26.8 - asc.bet PRO")
-st.caption("Horario Manaus UTC-4 | Odd Real + Ranking + Filtro 85%+")
+st.set_page_config(page_title="Analisador V26.9", layout="wide")
+st.title("Analisador V26.9 - asc.bet PRO")
+st.caption("Horario Manaus UTC-4 | Filtro Multi-Liga + Ranking")
 
 API_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
 API_URL = "https://apiv2.apifootball.com/"
@@ -88,7 +88,7 @@ def gerar_pdf_backtest(df, stats, periodo, stake, odd):
     pdf.ln(3)
     
     pdf.set_font("Arial", "B", 6)
-    pdf.cell(22, 6, "Data", 1); pdf.cell(70, 6, "Jogo", 1); pdf.cell(15, 6, "Liga", 1); pdf.cell(15, 6, "Prob 1.5", 1, 0, 'C')
+    pdf.cell(22, 6, "Data", 1); pdf.cell(60, 6, "Jogo", 1); pdf.cell(25, 6, "Liga", 1); pdf.cell(15, 6, "Prob 1.5", 1, 0, 'C')
     pdf.cell(10, 6, "FT", 1, 0, 'C'); pdf.cell(15, 6, "1.5FT", 1, 1, 'C')
     
     pdf.set_font("Arial", "", 6)
@@ -98,40 +98,54 @@ def gerar_pdf_backtest(df, stats, periodo, stake, odd):
         if row.get('1.5FT') == 'GREEN': pdf.set_text_color(0, 128, 0)
         else: pdf.set_text_color(200, 0, 0)
         pdf.cell(22, 5, str(row.get('Data','N/A')), 1, 0, '', fill)
-        pdf.cell(70, 5, str(row.get('Jogo','N/A'))[:30], 1, 0, '', fill)
-        pdf.cell(15, 5, str(row.get('Liga','N/A'))[:10], 1, 0, '', fill)
+        pdf.cell(60, 5, str(row.get('Jogo','N/A'))[:28], 1, 0, '', fill)
+        pdf.cell(25, 5, str(row.get('Liga','N/A'))[:15], 1, 0, '', fill)
         pdf.cell(15, 5, str(row.get('Prob 1.5','0'))+"%", 1, 0, 'C', fill)
         pdf.cell(10, 5, str(row.get('FT','0')), 1, 0, 'C', fill)
         pdf.cell(15, 5, str(row.get('1.5FT','RED')), 1, 1, 'C', fill)
         pdf.set_text_color(0, 0, 0)
     return bytes(pdf.output())
 
-LIGAS_MAP = {462:"Brasileirao A", 463:"Brasileirao B", 148:"Premier League", 149:"Championship", 3:"La Liga", 4:"Serie A"}
+# SUAS LIGAS ADICIONADAS COM ID DA API
+LIGAS_MAP = {
+    462:"Brasileirao A", 463:"Brasileirao B", 148:"Premier League", 
+    302:"K League 1", # Coreia
+    310:"J1 League", # Japao
+    253:"Campeonato Chileno", 
+    339:"Allsvenskan", # Suecia
+    340:"Eliteserien", # Noruega
+    342:"Veikkausliiga", # Finlandia
+    271:"Superliga Chinesa",
+    350:"Besta deild karla", # Islandia
+    128:"Liga Profesional Argentina",
+    250:"Liga BetPlay Dimayor", # Colombia
+    344:"MLS", # USA
+}
 
-tab1, tab2 = st.tabs(["ANALISADOR AO VIVO", "BACKTEST PRO V26.8"])
+tab1, tab2 = st.tabs(["ANALISADOR AO VIVO", "BACKTEST PRO V26.9"])
 
 with tab2:
-    st.header("BACKTEST PRO - 0.5HT 1.5FT 2.5FT")
+    st.header("BACKTEST PRO - FILTRO MULTI LIGA")
     st.warning("Limite: 50 jogos. API gratis = 100 chamadas/dia")
 
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        data_inicio = st.date_input("Data Inicio", datetime.now().date() - timedelta(days=7))
+        data_inicio = st.date_input("Data Inicio", datetime.now().date() - timedelta(days=30)) # 30 dias pra pegar liga boa
     with col2:
         data_fim = st.date_input("Data Fim", datetime.now().date() - timedelta(days=1))
     with col3:
         stake = st.number_input("Stake R$", 1, 1000, 10)
     with col4:
-        odd_real = st.number_input("Odd Real da Casa", 1.10, 3.00, 1.85, 0.05) # ITEM 2
+        odd_real = st.number_input("Odd Real da Casa", 1.10, 3.00, 1.90, 0.05)
     
     ligas_disponiveis = ["Todas"] + list(LIGAS_MAP.values())
-    liga_filtro = st.selectbox("Filtrar por Liga", ligas_disponiveis)
+    ligas_selecionadas = st.multiselect("Selecionar Ligas", ligas_disponiveis, default=["Todas"]) # MULTISELECT
     
     col5, col6 = st.columns(2)
     with col5:
         limite_bt = st.slider("Prob Minima Backtest", 60, 90, 70)
     with col6:
-        filtro_prob = st.slider("Filtro Prob 1.5 na Tabela", 60, 100, 85) # ITEM 1: 85% PADRAO
+        filtro_prob = st.slider("Filtro Prob 1.5 na Tabela", 60, 100, 85)
 
     if st.button("RODAR BACKTEST"):
         with st.spinner("Rodando backtest..."):
@@ -141,14 +155,16 @@ with tab2:
 
             resultados_bt = []
             stats = {"0.5HT": {"total":0, "green":0, "taxa":0}, "1.5FT": {"total":0, "green":0, "taxa":0}, "2.5FT": {"total":0, "green":0, "taxa":0}}
-            ranking_ligas = defaultdict(lambda: {"total":0, "green":0}) # ITEM 3
+            ranking_ligas = defaultdict(lambda: {"total":0, "green":0})
             cache_times = {}
 
             if isinstance(jogos, list):
                 jogos_finalizados = [j for j in jogos if j.get('match_status') == 'Finished'][:50]
-                if liga_filtro!= "Todas":
-                    liga_id_filtro = [k for k, v in LIGAS_MAP.items() if v == liga_filtro][0]
-                    jogos_finalizados = [j for j in jogos_finalizados if safe_int(j.get('league_id')) == liga_id_filtro]
+                
+                # FILTRO MULTI LIGA
+                if "Todas" not in ligas_selecionadas:
+                    ids_filtro = [k for k, v in LIGAS_MAP.items() if v in ligas_selecionadas]
+                    jogos_finalizados = [j for j in jogos_finalizados if safe_int(j.get('league_id')) in ids_filtro]
                 
                 progress = st.progress(0)
                 for idx, jogo in enumerate(jogos_finalizados):
@@ -179,7 +195,6 @@ with tab2:
                             if p_1_5 >= limite_bt:
                                 stats["1.5FT"]["total"] += 1
                                 if green_15: stats["1.5FT"]["green"] += 1
-                                # RANKING LIGAS
                                 ranking_ligas[nome_liga]["total"] += 1
                                 if green_15: ranking_ligas[nome_liga]["green"] += 1
                             if p_2_5 >= limite_bt:
@@ -210,7 +225,6 @@ with tab2:
 
                 st.success("BACKTEST CONCLUIDO")
                 
-                # ROI COM ODD REAL
                 total_apostado_15 = stats['1.5FT']['total'] * stake
                 lucro = (stats['1.5FT']['green'] * stake * (odd_real - 1)) - (stats['1.5FT']['total'] * stake)
                 roi = (lucro / total_apostado_15) * 100 if total_apostado_15 > 0 else 0
@@ -221,7 +235,6 @@ with tab2:
                 col3.metric("2.5FT", f"{stats['2.5FT']['taxa']:.1f}%", f"{stats['2.5FT']['green']}/{stats['2.5FT']['total']}")
                 col4.metric("ROI 1.5FT", f"{roi:.1f}%", f"R${lucro:.2f}")
 
-                # RANKING DE LIGAS ITEM 3
                 st.subheader("RANKING DE LIGAS - 1.5FT")
                 df_ranking = pd.DataFrame([
                     {"Liga": liga, "Jogos": dados["total"], "GREEN": dados["green"], "Taxa": (dados["green"]/dados["total"]*100 if dados["total"]>0 else 0)}
