@@ -2,14 +2,14 @@ import streamlit as st
 import requests
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta # <--- CONFERE SE TEM ISSO NO TOPO
+from datetime import datetime, timedelta
 from fpdf import FPDF
 from scipy.stats import poisson
 import time
 
-st.set_page_config(page_title="Analisador V24.0", layout="wide")
-st.title("🚀 Analisador V24.0 - 40 Ligas + PDF Tabela")
-st.caption("Calculo Profissional: Gols | Min 70%")
+st.set_page_config(page_title="Analisador V24.1", layout="wide")
+st.title("🚀 Analisador V24.1 - 40 Ligas + Filtros PRO")
+st.caption("Calculo Profissional: Gols | Cores | Filtro de Liga")
 
 API_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
 API_URL = "https://apiv2.apifootball.com/"
@@ -28,7 +28,7 @@ LIGAS_IDS = {
 }
 
 def safe_int(valor):
-    try: return int(valor) if valor is not None and valor != '' else 0
+    try: return int(valor) if valor is not None and valor!= '' else 0
     except: return 0
 
 @st.cache_data(ttl=3600)
@@ -88,11 +88,16 @@ def calcular_probabilidade_final(casa_id, fora_id, league_id):
     prob_final = min(round(prob_final), 99)
     return prob_final, round(p_0_5*100), round(p_1_5*100), round(p_2_5*100), round(media_h2h, 2), stats_casa, stats_fora
 
+def cor_prob(val):
+    if val >= 90: return 'background-color: #d4edda; color: #155724' # Verde
+    elif val >= 80: return 'background-color: #fff3cd; color: #856404' # Amarelo
+    else: return 'background-color: #ffeeba; color: #856404' # Laranja
+
 def gerar_pdf(df):
     pdf = FPDF(orientation='L')
     pdf.add_page()
     pdf.set_font("Arial", "B", 14)
-    pdf.cell(0, 10, f"Relatorio Analisador V24.0 - {datetime.now().strftime('%d/%m/%Y')}", ln=True, align="C")
+    pdf.cell(0, 10, f"Relatorio Analisador V24.1 - {datetime.now().strftime('%d/%m/%Y')}", ln=True, align="C")
     pdf.ln(3)
     pdf.set_font("Arial", "B", 6)
     pdf.cell(22, 8, "Data", 1); pdf.cell(40, 8, "Liga", 1); pdf.cell(12, 8, "Rod", 1, 0, 'C')
@@ -117,11 +122,21 @@ def gerar_pdf(df):
     
     return bytes(pdf.output())
 
+# SIDEBAR COM FILTROS
+st.sidebar.header("⚙️ Filtros")
 dias = st.sidebar.slider("Buscar proximos X dias", 1, 14, 7)
 limite_prob = st.sidebar.slider("Probabilidade Minima %", 60, 90, 70)
+ligas_selecionadas = st.sidebar.multiselect(
+    "Escolher Ligas para Analisar",
+    options=list(LIGAS_IDS.keys()),
+    default=["Brasil Serie A", "Libertadores", "Premier League", "Champions League"]
+)
+mostrar_top10 = st.sidebar.checkbox("Mostrar apenas TOP 10")
+
+ligas_ids_filtradas = [LIGAS_IDS[liga] for liga in ligas_selecionadas]
 
 if st.button("🚀 ANALISAR JOGOS 70%+"):
-    with st.spinner("Analisando 40 ligas... Aguarde 3 min"):
+    with st.spinner("Analisando ligas selecionadas... Aguarde"):
         data_de = datetime.now().strftime("%Y-%m-%d")
         data_ate = (datetime.now() + timedelta(days=dias)).strftime("%Y-%m-%d")
         jogos = api_call("get_events", {"from": data_de, "to": data_ate})
@@ -129,7 +144,7 @@ if st.button("🚀 ANALISAR JOGOS 70%+"):
         jogos_analisados = 0
         if isinstance(jogos, list):
             for jogo in jogos:
-                if safe_int(jogo.get('league_id')) in LIGAS_IDS.values():
+                if safe_int(jogo.get('league_id')) in ligas_ids_filtradas: # FILTRO DE LIGA
                     jogos_analisados += 1
                     try:
                         casa_id = jogo.get('match_hometeam_id')
@@ -154,11 +169,19 @@ if st.button("🚀 ANALISAR JOGOS 70%+"):
                                 "Prob %": prob_final
                             })
                     except: continue
+        
         if resultados:
             df = pd.DataFrame(resultados).sort_values("Prob %", ascending=False)
+            if mostrar_top10: df = df.head(10) # TOP 10
+            
             st.success(f"✅ {len(df)} jogos com {limite_prob}%+ encontrados! Analisados: {jogos_analisados}")
-            st.dataframe(df, use_container_width=True)
+            
+            # TABELA COM CORES
+            st.dataframe(
+                df.style.applymap(cor_prob, subset=['Prob %']),
+                use_container_width=True
+            )
             pdf_bytes = gerar_pdf(df)
-            st.download_button("📄 Baixar PDF", pdf_bytes, "relatorio_v24_0.pdf", "application/pdf")
+            st.download_button("📄 Baixar PDF", pdf_bytes, "relatorio_v24_1.pdf", "application/pdf")
         else:
             st.warning(f"Nenhum jogo bateu {limite_prob}%+. Analisados: {jogos_analisados} jogos. Tente 65%")
