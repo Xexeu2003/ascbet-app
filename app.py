@@ -4,10 +4,12 @@ import pandas as pd
 from datetime import datetime, timedelta
 from scipy.stats import poisson
 from collections import defaultdict
+from fpdf import FPDF
+import io
 
 st.set_page_config(page_title="Analisador V26.6.1", layout="wide")
 st.title("Analisador V26.6.1 - asc.bet PRO")
-st.caption("Horario Manaus UTC-4 | 40 Ligas | Leve + ROI + Ranking")
+st.caption("Horario Manaus UTC-4 | 40 Ligas | Leve + ROI + Ranking + PDF")
 
 API_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
 API_URL = "https://apiv2.apifootball.com/"
@@ -61,6 +63,50 @@ def calcular_probabilidade_final(casa_id, fora_id, league_id):
     prob_final = min(round(prob_final), 99)
     return prob_final, round(p_0_5*100), round(p_1_5*100), round(p_2_5*100)
 
+def gerar_pdf(resultados, stats, ranking, periodo, ligas):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font('Arial', 'B', 16)
+    pdf.cell(0, 10, 'RELATORIO BACKTEST V26.6.1', 0, 1, 'C')
+    pdf.set_font('Arial', '', 10)
+    pdf.cell(0, 8, f'Periodo: {periodo} | Ligas: {", ".join(ligas)}', 0, 1, 'C')
+    pdf.ln(5)
+    
+    pdf.set_font('Arial', 'B', 12)
+    pdf.cell(0, 8, 'RESUMO GERAL', 0, 1)
+    pdf.set_font('Arial', '', 10)
+    taxa_15 = (stats['1.5FT']['green'] / stats['1.5FT']['total'] * 100) if stats['1.5FT']['total'] > 0 else 0
+    pdf.cell(0, 6, f'Taxa 1.5FT: {taxa_15:.1f}% - {stats["1.5FT"]["green"]}/{stats["1.5FT"]["total"]} jogos', 0, 1)
+    pdf.cell(0, 6, f'Taxa 0.5HT: {(stats["0.5HT"]["green"] / stats["0.5HT"]["total"] * 100) if stats["0.5HT"]["total"] > 0 else 0:.1f}%', 0, 1)
+    pdf.cell(0, 6, f'Taxa 2.5FT: {(stats["2.5FT"]["green"] / stats["2.5FT"]["total"] * 100) if stats["2.5FT"]["total"] > 0 else 0:.1f}%', 0, 1)
+    pdf.ln(5)
+    
+    pdf.set_font('Arial', 'B', 12)
+    pdf.cell(0, 8, 'RANKING DE LIGAS - 1.5FT', 0, 1)
+    pdf.set_font('Arial', '', 9)
+    for liga, dados in ranking.items():
+        taxa = (dados["green"]/dados["total"]*100 if dados["total"]>0 else 0)
+        pdf.cell(0, 6, f'{liga}: {taxa:.1f}% - {dados["green"]}/{dados["total"]}', 0, 1)
+    pdf.ln(5)
+    
+    pdf.set_font('Arial', 'B', 10)
+    pdf.cell(40, 7, 'Data', 1)
+    pdf.cell(80, 7, 'Jogo', 1)
+    pdf.cell(25, 7, 'Prob 1.5', 1)
+    pdf.cell(15, 7, 'FT', 1)
+    pdf.cell(20, 7, 'Result', 1)
+    pdf.ln()
+    pdf.set_font('Arial', '', 8)
+    for _, row in resultados.iterrows():
+        pdf.cell(40, 6, str(row['Data']), 1)
+        pdf.cell(80, 6, str(row['Jogo'])[:35], 1)
+        pdf.cell(25, 6, f"{row['Prob 1.5']}%", 1)
+        pdf.cell(15, 6, str(row['FT']), 1)
+        pdf.cell(20, 6, str(row['1.5FT']), 1)
+        pdf.ln()
+    
+    return pdf.output(dest='S').encode('latin-1')
+
 # 40 LIGAS
 LIGAS_MAP = {
     462:"Brasileirao A", 463:"Brasileirao B", 148:"Premier League", 152:"Championship",
@@ -77,7 +123,7 @@ LIGAS_MAP = {
     271:"Superliga Chinesa", 128:"Liga Profesional Argentina", 250:"Liga BetPlay Dimayor"
 }
 
-tab1, tab2 = st.tabs(["ANALISADOR AO VIVO", "BACKTEST PRO"])
+tab1, tab2, tab3 = st.tabs(["ANALISADOR AO VIVO", "BACKTEST PRO", "EXPORTAR PDF"])
 
 # ABA 1: AO VIVO
 with tab1:
@@ -161,6 +207,11 @@ with tab2:
     ligas_selecionadas = st.multiselect("Selecionar Ligas", list(LIGAS_MAP.values()), default=["K League 1", "J1 League"])
     limite_bt = st.slider("Prob Minima", 60, 90, 70)
 
+    if 'df_bt_global' not in st.session_state:
+        st.session_state.df_bt_global = None
+        st.session_state.stats_global = None
+        st.session_state.ranking_global = None
+
     if st.button("RODAR BACKTEST"):
         with st.spinner("Rodando backtest..."):
             data_de = data_inicio.strftime("%Y-%m-%d")
@@ -217,8 +268,10 @@ with tab2:
 
             if resultados_bt:
                 df_bt = pd.DataFrame(resultados_bt)
+                st.session_state.df_bt_global = df_bt
+                st.session_state.stats_global = stats
+                st.session_state.ranking_global = ranking_ligas
                 
-                # ROI
                 taxa_15 = (stats['1.5FT']['green'] / stats['1.5FT']['total'] * 100) if stats['1.5FT']['total'] > 0 else 0
                 total_apostado = stats['1.5FT']['total'] * stake
                 lucro_green = stats['1.5FT']['green'] * stake * (odd_real - 1)
@@ -231,7 +284,6 @@ with tab2:
                 col2.metric("ROI 1.5FT", f"{roi:.1f}%", f"R${lucro:.2f}")
                 col3.metric("Lucro", f"R${lucro:.2f}")
 
-                # RANKING
                 st.subheader("RANKING DE LIGAS - 1.5FT")
                 df_ranking = pd.DataFrame([
                     {"Liga": liga, "Jogos": dados["total"], "GREEN": dados["green"], "Taxa": (dados["green"]/dados["total"]*100 if dados["total"]>0 else 0)}
@@ -239,7 +291,6 @@ with tab2:
                 ]).sort_values("Taxa", ascending=False)
                 st.dataframe(df_ranking.style.format({"Taxa": "{:.1f}%"}), use_container_width=True)
 
-                # TABELA COM CORES
                 def color_result(val):
                     if val == 'GREEN': return 'background-color: #d4edda; color: #155724; font-weight: bold'
                     elif val == 'RED': return 'background-color: #f8d7da; color: #721c24; font-weight: bold'
@@ -248,3 +299,30 @@ with tab2:
                 st.dataframe(df_bt.style.map(color_result, subset=['1.5FT']), use_container_width=True)
             else:
                 st.error("Nenhum jogo encontrado")
+
+# ABA 3: EXPORTAR PDF
+with tab3:
+    st.header("EXPORTAR RELATORIO PDF")
+    
+    if st.session_state.df_bt_global is not None:
+        st.success("Dados do ultimo backtest carregados")
+        
+        if st.button("GERAR PDF"):
+            with st.spinner("Gerando PDF..."):
+                periodo = f"{data_inicio.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}"
+                pdf_bytes = gerar_pdf(
+                    st.session_state.df_bt_global,
+                    st.session_state.stats_global,
+                    st.session_state.ranking_global,
+                    periodo,
+                    ligas_selecionadas
+                )
+                
+                st.download_button(
+                    label="BAIXAR RELATORIO PDF",
+                    data=pdf_bytes,
+                    file_name=f"Relatorio_V26.6.1_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                    mime="application/pdf"
+                )
+    else:
+        st.warning("Primeiro rode o BACKTEST na aba 2 para gerar o PDF")
