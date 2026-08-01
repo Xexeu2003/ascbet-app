@@ -7,9 +7,9 @@ from fpdf import FPDF
 from scipy.stats import poisson
 import time
 
-st.set_page_config(page_title="Analisador V24.3", layout="wide")
-st.title("🚀 Analisador V24.3 - 40 Ligas + Filtros PRO")
-st.caption("Calculo Profissional: Gols | Cores | Top 10 | PDF Tabela")
+st.set_page_config(page_title="Analisador V24.4", layout="wide")
+st.title("🚀 Analisador V24.4 - 40 Ligas + 2 PDFs PRO")
+st.caption("Calculo Profissional: Gols | Cores | Top 20 | PDF Completo + TOP20")
 
 API_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
 API_URL = "https://apiv2.apifootball.com/"
@@ -88,16 +88,16 @@ def calcular_probabilidade_final(casa_id, fora_id, league_id):
     prob_final = min(round(prob_final), 99)
     return prob_final, round(p_0_5*100), round(p_1_5*100), round(p_2_5*100), round(media_h2h, 2), stats_casa, stats_fora
 
-def cor_prob(val): # CORRIGIDO PRA VERSAO NOVA
-    if val >= 90: return 'background-color: #d4edda; color: #155724'
-    elif val >= 80: return 'background-color: #fff3cd; color: #856404'
-    else: return 'background-color: #ffeeba; color: #856404'
+def cor_prob(val):
+    if val >= 90: return 'background-color: #d4edda; color: #155724' # Verde
+    elif val >= 80: return 'background-color: #cce5ff; color: #004085' # Azul
+    else: return 'background-color: #fff3cd; color: #856404' # Amarelo
 
-def gerar_pdf(df):
+def gerar_pdf(df, titulo="Completo"):
     pdf = FPDF(orientation='L')
     pdf.add_page()
     pdf.set_font("Arial", "B", 14)
-    pdf.cell(0, 10, f"Relatorio Analisador V24.3 - {datetime.now().strftime('%d/%m/%Y')}", ln=True, align="C")
+    pdf.cell(0, 10, f"Relatorio Analisador V24.4 - {titulo} - {datetime.now().strftime('%d/%m/%Y')}", ln=True, align="C")
     pdf.ln(3)
     pdf.set_font("Arial", "B", 6)
     pdf.cell(22, 8, "Data", 1); pdf.cell(40, 8, "Liga", 1); pdf.cell(12, 8, "Rod", 1, 0, 'C')
@@ -109,6 +109,13 @@ def gerar_pdf(df):
     for i, row in df.iterrows():
         fill = True if i % 2 == 0 else False
         if fill: pdf.set_fill_color(240, 240, 240)
+        
+        prob = row.get('Prob %', 0)
+        # COR NO PDF TAMBEM
+        if prob >= 90: pdf.set_text_color(0, 128, 0) # Verde
+        elif prob >= 80: pdf.set_text_color(0, 0, 255) # Azul
+        else: pdf.set_text_color(255, 140, 0) # Laranja/Amarelo
+        
         pdf.cell(22, 6, str(row.get('Data','N/A')).encode('latin-1', 'replace').decode('latin-1'), 1, 0, '', fill)
         pdf.cell(40, 6, str(row.get('Liga','N/A'))[:22].encode('latin-1', 'replace').decode('latin-1'), 1, 0, '', fill)
         pdf.cell(12, 6, str(row.get('Rodada','N/A')), 1, 0, 'C', fill)
@@ -118,14 +125,15 @@ def gerar_pdf(df):
         pdf.cell(15, 6, str(row.get('Gols Casa U8',0)), 1, 0, 'C', fill)
         pdf.cell(15, 6, str(row.get('Gols Fora U8',0)), 1, 0, 'C', fill)
         pdf.cell(18, 6, str(row.get('Prob 2.5 FT','0%')), 1, 0, 'C', fill)
-        pdf.cell(15, 6, str(row.get('Prob %',0))+"%", 1, 1, 'C', fill)
+        pdf.cell(15, 6, str(prob)+"%", 1, 1, 'C', fill)
+        pdf.set_text_color(0, 0, 0) # Volta pra preto
     
     return bytes(pdf.output())
 
 st.sidebar.header("⚙️ Filtros")
 dias = st.sidebar.slider("Buscar proximos X dias", 1, 14, 7)
 limite_prob = st.sidebar.slider("Probabilidade Minima %", 60, 90, 70)
-mostrar_top10 = st.sidebar.checkbox("Mostrar apenas TOP 10")
+mostrar_top10 = st.sidebar.checkbox("Mostrar apenas TOP 10 na tela")
 
 if st.button("🚀 ANALISAR JOGOS 70%+"):
     with st.spinner("Analisando 40 ligas... Aguarde 3 min"):
@@ -163,17 +171,23 @@ if st.button("🚀 ANALISAR JOGOS 70%+"):
                     except: continue
         
         if resultados:
-            df = pd.DataFrame(resultados).sort_values("Prob %", ascending=False)
-            if mostrar_top10: df = df.head(10)
+            df_completo = pd.DataFrame(resultados).sort_values("Prob %", ascending=False)
+            df_tela = df_completo.head(10) if mostrar_top10 else df_completo
+            df_top20 = df_completo.head(20) # TOP 20 PARA PDF
             
-            st.success(f"✅ {len(df)} jogos com {limite_prob}%+ encontrados! Analisados: {jogos_analisados}")
+            st.success(f"✅ {len(df_completo)} jogos com {limite_prob}%+ encontrados! Analisados: {jogos_analisados}")
             
-            # CORRECAO AQUI: TROQUEI applymap POR map
             st.dataframe(
-                df.style.map(cor_prob, subset=['Prob %']),
+                df_tela.style.map(cor_prob, subset=['Prob %']),
                 use_container_width=True
             )
-            pdf_bytes = gerar_pdf(df)
-            st.download_button("📄 Baixar PDF", pdf_bytes, "relatorio_v24_3.pdf", "application/pdf")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                pdf_completo = gerar_pdf(df_completo, "Completo")
+                st.download_button("📄 Baixar PDF COMPLETO", pdf_completo, "relatorio_completo_v24_4.pdf", "application/pdf")
+            with col2:
+                pdf_top20 = gerar_pdf(df_top20, "TOP 20")
+                st.download_button("🏆 Baixar PDF TOP 20", pdf_top20, "relatorio_top20_v24_4.pdf", "application/pdf")
         else:
             st.warning(f"Nenhum jogo bateu {limite_prob}%+. Analisados: {jogos_analisados} jogos. Tente 65%")
