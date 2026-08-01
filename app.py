@@ -6,8 +6,8 @@ from fpdf import FPDF
 from scipy.stats import poisson
 import pytz # PARA HORARIO DE MANAUS
 
-st.set_page_config(page_title="Analisador V25.0", layout="wide")
-st.title("🚀 Analisador V25.0 - asc.bet PRO")
+st.set_page_config(page_title="Analisador V25.1", layout="wide")
+st.title("🚀 Analisador V25.1 - asc.bet PRO")
 st.caption("Horário Manaus | Logo Oficial | 40 Ligas + 2 PDFs + 0.5 + 1.5 + 2.5")
 
 API_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
@@ -107,15 +107,15 @@ def gerar_pdf(df, titulo="Completo"):
     pdf = FPDF(orientation='L')
     pdf.add_page()
     
-    # LOGO ASC.BET COM BOLA
+    # LOGO ASC.BET CORRIGIDO SEM EMOJI
     pdf.set_font("Arial", "B", 22)
     pdf.set_text_color(0, 128, 0) # Verde asc.bet
-    pdf.cell(0, 12, "⚽ asc.bet", ln=True, align="C")
+    pdf.cell(0, 12, "asc.bet", ln=True, align="C")
     pdf.set_text_color(0, 0, 0)
     
     pdf.set_font("Arial", "B", 14)
     data_hoje = datetime.now(TIMEZONE_MANAUS).strftime('%d/%m/%Y %H:%M')
-    pdf.cell(0, 10, f"Relatorio Analisador V25.0 - {titulo} - {data_hoje}", ln=True, align="C")
+    pdf.cell(0, 10, f"Relatorio Analisador V25.1 - {titulo} - {data_hoje}", ln=True, align="C")
     pdf.ln(3)
     
     pdf.set_font("Arial", "B", 6)
@@ -212,9 +212,9 @@ if st.button("🚀 ANALISAR JOGOS 70%+"):
             col1, col2 = st.columns(2)
             with col1:
                 pdf_completo = gerar_pdf(df_completo, "Completo")
-                st.download_button("📄 Baixar PDF COMPLETO", pdf_completo, "relatorio_completo_v25_0.pdf", "application/pdf")
+                st.download_button("📄 Baixar PDF COMPLETO", pdf_completo, "relatorio_completo_v25_1.pdf", "application/pdf")
             with col2:
                 pdf_top20 = gerar_pdf(df_top20, "TOP 20")
-                st.download_button("🏆 Baixar PDF TOP 20", pdf_top20, "relatorio_top20_v25_0.pdf", "application/pdf")
+                st.download_button("🏆 Baixar PDF TOP 20", pdf_top20, "relatorio_top20_v25_1.pdf", "application/pdf")
         else:
             st.warning(f"Nenhum jogo bateu {limite_prob}%+. Analisados: {jogos_analisados} jogos. Tente 65%")
