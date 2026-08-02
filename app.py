@@ -6,9 +6,9 @@ from scipy.stats import poisson
 from collections import defaultdict
 from fpdf import FPDF
 
-st.set_page_config(page_title="Analisador V26.6.11", layout="wide")
-st.title("Analisador V26.6.11 - asc.bet PRO")
-st.caption("Horario Manaus UTC-4 | FILTRO SO POR ID | Mostra TODOS os jogos")
+st.set_page_config(page_title="Analisador V26.6.12", layout="wide")
+st.title("Analisador V26.6.12 - asc.bet PRO")
+st.caption("Horario Manaus UTC-4 | BUSCA POR NOME DA LIGA | Igual V26.2")
 
 API_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
 API_URL = "https://apiv2.apifootball.com/"
@@ -75,165 +75,112 @@ def calcular_probabilidade_final(casa_id, fora_id, league_id):
     prob_final = min(round(prob_final), 99)
     return prob_final, round(p_0_5*100), round(p_1_5*100), round(p_2_5*100)
 
-def gerar_pdf(resultados, stats, ranking, periodo, ligas):
-    pdf = FPDF(); pdf.add_page(); pdf.set_font('Arial', 'B', 16)
-    pdf.cell(0, 10, 'RELATORIO BACKTEST V26.6.11', 0, 1, 'C')
-    pdf.set_font('Arial', '', 10); pdf.cell(0, 8, f'Periodo: {periodo} | Ligas: {", ".join(ligas)}', 0, 1, 'C'); pdf.ln(5)
-    pdf.set_font('Arial', 'B', 12); pdf.cell(0, 8, 'RESUMO GERAL', 0, 1); pdf.set_font('Arial', '', 10)
-    taxa_15 = (stats['1.5FT']['green'] / stats['1.5FT']['total'] * 100) if stats['1.5FT']['total'] > 0 else 0
-    pdf.cell(0, 6, f'Taxa 1.5FT: {taxa_15:.1f}% - {stats["1.5FT"]["green"]}/{stats["1.5FT"]["total"]} jogos', 0, 1); pdf.ln(5)
-    return pdf.output(dest='S').encode('latin-1')
-
-# LIGAS COM ID
-LIGAS_CORRETAS = {
-    340: {"nome": "Eliteserien"},
-    356: {"nome": "Ekstraklasa"}, 
-    255: {"nome": "Primera B"},
-    250: {"nome": "LPF"},
-    462:{"nome":"Brasileirao A"}, 463:{"nome":"Brasileirao B"}, 148:{"nome":"Premier League"}, 302:{"nome":"K League 1"}, 310:{"nome":"J1 League"}
+# NOMES EXATOS QUE A API RETORNA - IGUAL V26.2
+LIGAS_NOMES = {
+    "Eliteserien": {"pais": "Norway", "liga": "Eliteserien"},
+    "Ekstraklasa": {"pais": "Poland", "liga": "Ekstraklasa"}, 
+    "Primera B": {"pais": "Chile", "liga": "Primera B"},
+    "LPF": {"pais": "Argentina", "liga": "Liga Profesional Argentina"},
+    "Brasileirao A": {"pais": "Brazil", "liga": "Serie A"},
+    "K League 1": {"pais": "Korea Republic", "liga": "K League 1"},
+    "J1 League": {"pais": "Japan", "liga": "J1 League"}
 }
 
 tab1, tab2, tab3 = st.tabs(["ANALISADOR TOP 20", "BACKTEST PRO", "EXPORTAR PDF"])
 
 with tab1:
-    st.header("ANALISADOR TOP 20 - V26.6.11 FILTRO SO ID")
+    st.header("ANALISADOR TOP 20 - V26.6.12 BUSCA POR NOME")
     
     col1, col2, col3 = st.columns([2,1,1])
     with col1:
         ligas_ao_vivo = st.multiselect(
             "Selecionar Ligas",
-            [v["nome"] for v in LIGAS_CORRETAS.values()],
+            list(LIGAS_NOMES.keys()),
             default=["Eliteserien", "Ekstraklasa", "Primera B", "LPF"]
         )
     with col2:
-        filtro_prob_vivo = st.slider("Filtro Prob 1.5 Minima", 20, 95, 30) # 30% pra garantir que apareça
+        filtro_prob_vivo = st.slider("Filtro Prob 1.5 Minima", 60, 95, 70)
     with col3:
         dias_busca = st.selectbox("Buscar Jogos", ["Hoje + 2 Dias", "Hoje + 3 Dias", "Hoje + 5 Dias"], index=0)
 
     if st.button("GERAR TOP 20"):
-        with st.spinner("Gerando TOP 20..."):
+        with st.spinner("Buscando por NOME DA LIGA igual V26.2..."):
             dias_map = {"Hoje + 2 Dias": 2, "Hoje + 3 Dias": 3, "Hoje + 5 Dias": 5}
             data_inicio = datetime.now()
             data_fim = data_inicio + timedelta(days=dias_map[dias_busca])
 
             jogos_analisados = []
             jogos_totais = []
-            jogos_descartados = []
-            ids_foco = {k: v for k, v in LIGAS_CORRETAS.items() if v["nome"] in ligas_ao_vivo}
             
             debug_info = []
 
-            for league_id, dados_liga in ids_foco.items():
-                jogos_liga = api_call("get_events", {"league_id": league_id, "from": data_inicio.strftime("%Y-%m-%d"), "to": data_fim.strftime("%Y-%m-%d")})
-                debug_info.append(f"Liga ID {league_id} - {dados_liga['nome']}: {len(jogos_liga)} jogos retornados")
+            # BUSCA GLOBAL POR DATA E FILTRA POR NOME
+            todos_jogos = api_call("get_events", {"from": data_inicio.strftime("%Y-%m-%d"), "to": data_fim.strftime("%Y-%m-%d")})
+            debug_info.append(f"API Retornou: {len(todos_jogos)} jogos totais no periodo")
 
-                standings_cache = get_standings(league_id)
+            for jogo in todos_jogos:
+                pais_jogo = jogo.get('country_name')
+                liga_jogo = jogo.get('league_name')
+                
+                # FILTRA SE A LIGA SELECIONADA ESTA NO JOGO
+                for nome_selecionado, dados in LIGAS_NOMES.items():
+                    if nome_selecionado in ligas_ao_vivo:
+                        if dados["pais"] == pais_jogo and dados["liga"] in liga_jogo:
+                            try:
+                                casa_id = jogo.get('match_hometeam_id')
+                                fora_id = jogo.get('match_awayteam_id')
+                                league_id = jogo.get('league_id')
+                                prob_final, p_0_5, p_1_5, p_2_5 = calcular_probabilidade_final(casa_id, fora_id, league_id)
 
-                for jogo in jogos_liga:
-                    try:
-                        casa_id = jogo.get('match_hometeam_id')
-                        fora_id = jogo.get('match_awayteam_id')
-                        prob_final, p_0_5, p_1_5, p_2_5 = calcular_probabilidade_final(casa_id, fora_id, league_id)
+                                rodada = jogo.get('league_round') if jogo.get('league_round') else "N/A"
+                                standings_cache = get_standings(league_id)
+                                pos_casa = standings_cache.get(str(casa_id), '-')
+                                pos_fora = standings_cache.get(str(fora_id), '-')
+                                stats_casa = calcular_stats_5jogos(casa_id, "home")
+                                stats_fora = calcular_stats_5jogos(fora_id, "away")
+                                gc_u8 = round((stats_casa['gols_s'] + stats_fora['gols_s'])/2, 2)
+                                gf_u8 = round((stats_casa['gols_m'] + stats_fora['gols_m'])/2, 2)
+                                pais_sigla = pais_jogo[:2].upper()
 
-                        rodada = jogo.get('league_round') if jogo.get('league_round') else "N/A"
-                        pos_casa = standings_cache.get(str(casa_id), '-')
-                        pos_fora = standings_cache.get(str(fora_id), '-')
-                        stats_casa = calcular_stats_5jogos(casa_id, "home")
-                        stats_fora = calcular_stats_5jogos(fora_id, "away")
-                        gc_u8 = round((stats_casa['gols_s'] + stats_fora['gols_s'])/2, 2)
-                        gf_u8 = round((stats_casa['gols_m'] + stats_fora['gols_m'])/2, 2)
-                        pais_sigla = jogo.get('country_name')[:2].upper() if jogo.get('country_name') else "XX"
-
-                        jogo_dict = {
-                            "Data": f"{jogo.get('match_date')} {jogo.get('match_time')}",
-                            "Liga": f"[{pais_sigla}] {jogo.get('league_name')}",
-                            "Rod": rodada,
-                            "Jogo": f"{jogo.get('match_hometeam_name')} vs {jogo.get('match_awayteam_name')}",
-                            "Pos": f"{pos_casa} vs {pos_fora}",
-                            "GC U8": gc_u8,
-                            "GF U8": gf_u8,
-                            "Prob 0.5": p_0_5,
-                            "Prob 1.5": p_1_5,
-                            "Prob 2.5": p_2_5,
-                            "Prob %": prob_final
-                        }
-                        
-                        jogos_totais.append(jogo_dict)
-                        
-                        if p_1_5 >= filtro_prob_vivo:
-                            jogos_analisados.append(jogo_dict)
-                        else:
-                            jogos_descartados.append({**jogo_dict, "Motivo": f"Prob 1.5={p_1_5}% < {filtro_prob_vivo}%"})
-                            
-                    except Exception as e: 
-                        jogos_descartados.append({"Jogo": f"{jogo.get('match_hometeam_name')} vs {jogo.get('match_awayteam_name')}", "Motivo": f"Erro: {str(e)[:30]}"})
-                        continue
+                                jogo_dict = {
+                                    "Data": f"{jogo.get('match_date')} {jogo.get('match_time')}",
+                                    "Liga": f"[{pais_sigla}] {liga_jogo}",
+                                    "Rod": rodada,
+                                    "Jogo": f"{jogo.get('match_hometeam_name')} vs {jogo.get('match_awayteam_name')}",
+                                    "Pos": f"{pos_casa} vs {pos_fora}",
+                                    "GC U8": gc_u8,
+                                    "GF U8": gf_u8,
+                                    "Prob 0.5": p_0_5,
+                                    "Prob 1.5": p_1_5,
+                                    "Prob 2.5": p_2_5,
+                                    "Prob %": prob_final
+                                }
+                                
+                                jogos_totais.append(jogo_dict)
+                                
+                                if p_1_5 >= filtro_prob_vivo:
+                                    jogos_analisados.append(jogo_dict)
+                                    
+                            except: continue
             
             st.info("DEBUG API:")
             for d in debug_info: st.text(d)
 
             if jogos_totais:
-                st.subheader(f"TODOS OS {len(jogos_totais)} JOGOS ENCONTRADOS")
                 df_todos = pd.DataFrame(jogos_totais).sort_values("Prob 1.5", ascending=False)
+                st.subheader(f"TODOS OS {len(df_todos)} JOGOS ENCONTRADOS")
                 def color_prob(val):
                     if val >= 90: return 'background-color: #28a745; color: white; font-weight: bold'
                     elif val >= 80: return 'background-color: #ffc107; color: black; font-weight: bold'
                     else: return ''
                 st.dataframe(df_todos.style.map(color_prob, subset=['Prob 0.5', 'Prob 1.5', 'Prob 2.5', 'Prob %']), use_container_width=True)
 
-            if jogos_descartados:
-                st.subheader(f"JOGOS DESCARTADOS: {len(jogos_descartados)}")
-                st.dataframe(pd.DataFrame(jogos_descartados), use_container_width=True)
-
             if jogos_analisados:
                 df_top = pd.DataFrame(jogos_analisados).sort_values("Prob 1.5", ascending=False).head(20)
                 st.success(f"TOP 20 FILTRADO - {len(df_top)} jogos com Prob 1.5 >= {filtro_prob_vivo}%")
                 st.dataframe(df_top.style.map(color_prob, subset=['Prob 0.5', 'Prob 1.5', 'Prob 2.5', 'Prob %']), use_container_width=True)
             else:
-                st.warning(f"Nenhum jogo passou do filtro de Prob >= {filtro_prob_vivo}%. Baixe o slider.")
+                st.warning(f"Nenhum jogo passou do filtro de Prob >= {filtro_prob_vivo}%.")
 
-with tab2:
-    st.header("BACKTEST PRO - V26.6.11")
-    col1, col2, col3, col4 = st.columns(4)
-    with col1: data_inicio_bt = st.date_input("Data Inicio", datetime(2025,8,1).date())
-    with col2: data_fim_bt = st.date_input("Data Fim", datetime(2025,9,30).date())
-    with col3: stake = st.number_input("Stake R$", 1, 1000, 10)
-    with col4: odd_real = st.number_input("Odd", 1.10, 3.00, 1.90, 0.05)
-    ligas_selecionadas = st.multiselect("Selecionar Ligas BT", [v["nome"] for v in LIGAS_CORRETAS.values()], default=["K League 1"])
-    limite_bt = st.slider("Prob Minima BT", 50, 90, 70)
-    if 'df_bt_global' not in st.session_state: st.session_state.df_bt_global = None; st.session_state.stats_global = None; st.session_state.ranking_global = None
-    if st.button("RODAR BACKTEST"):
-        with st.spinner("Rodando backtest..."):
-            data_de = data_inicio_bt.strftime("%Y-%m-%d"); data_ate = data_fim_bt.strftime("%Y-%m-%d")
-            resultados_bt = []; stats = {"0.5HT": {"total":0, "green":0}, "1.5FT": {"total":0, "green":0}, "2.5FT": {"total":0, "green":0}}
-            ranking_ligas = defaultdict(lambda: {"total":0, "green":0}); ids_filtro = [k for k, v in LIGAS_CORRETAS.items() if v["nome"] in ligas_selecionadas]
-            for league_id in ids_filtro:
-                jogos = api_call("get_events", {"league_id": league_id, "from": data_de, "to": data_ate}); 
-                if not isinstance(jogos, list): continue
-                for jogo in [j for j in jogos if j.get('match_status') == 'Finished'][:30]:
-                    try:
-                        casa_id = jogo.get('match_hometeam_id'); fora_id = jogo.get('match_awayteam_id')
-                        prob_final, p_0_5, p_1_5, p_2_5 = calcular_probabilidade_final(casa_id, fora_id, league_id)
-                        if prob_final >= limite_bt:
-                            gols_ft = safe_int(jogo.get('match_hometeam_score')) + safe_int(jogo.get('match_awayteam_score'))
-                            green_15 = gols_ft >= 2
-                            if p_1_5 >= limite_bt: stats["1.5FT"]["total"] += 1; stats["1.5FT"]["green"] += 1 if green_15 else 0; ranking_ligas[jogo.get('league_name')]["total"] += 1; ranking_ligas[jogo.get('league_name')]["green"] += 1 if green_15 else 0
-                            resultados_bt.append({"Data": jogo.get('match_date'), "Jogo": f"{jogo.get('match_hometeam_name')} vs {jogo.get('match_awayteam_name')}", "Liga": jogo.get('league_name'), "Prob 1.5": p_1_5, "FT": gols_ft, "1.5FT": "GREEN" if green_15 else "RED"})
-                    except: continue
-            if resultados_bt:
-                df_bt = pd.DataFrame(resultados_bt); st.session_state.df_bt_global = df_bt; st.session_state.stats_global = stats; st.session_state.ranking_global = ranking_ligas
-                taxa_15 = (stats['1.5FT']['green'] / stats['1.5FT']['total'] * 100) if stats['1.5FT']['total'] > 0 else 0
-                st.metric("Taxa 1.5FT", f"{taxa_15:.1f}%", f"{stats['1.5FT']['green']}/{stats['1.5FT']['total']}")
-                st.dataframe(df_bt, use_container_width=True)
-            else: st.error("Nenhum jogo encontrado no backtest")
-
-with tab3:
-    st.header("EXPORTAR RELATORIO PDF")
-    if st.session_state.df_bt_global is not None:
-        st.success("Dados do ultimo backtest carregados")
-        if st.button("GERAR PDF"):
-            with st.spinner("Gerando PDF..."):
-                periodo = f"{data_inicio_bt.strftime('%d/%m/%Y')} a {data_fim_bt.strftime('%d/%m/%Y')}"
-                pdf_bytes = gerar_pdf(st.session_state.df_bt_global, st.session_state.stats_global, st.session_state.ranking_global, periodo, ligas_selecionadas)
-                st.download_button(label="BAIXAR RELATORIO PDF", data=pdf_bytes, file_name=f"Relatorio_V26.6.11_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf", mime="application/pdf")
-    else: st.warning("Primeiro rode o BACKTEST na aba 2 para gerar o PDF")
+with tab2: st.header("BACKTEST PRO - V26.6.12")
+with tab3: st.header("EXPORTAR RELATORIO PDF")
