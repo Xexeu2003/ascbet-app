@@ -6,9 +6,9 @@ from scipy.stats import poisson
 from collections import defaultdict
 from fpdf import FPDF
 
-st.set_page_config(page_title="Analisador V26.6.4", layout="wide")
-st.title("Analisador V26.6.4 - asc.bet PRO")
-st.caption("Horario Manaus UTC-4 | 40 Ligas | Busca por Liga | +Pais +Rodada +Posicao +PDF")
+st.set_page_config(page_title="Analisador V26.6.5", layout="wide")
+st.title("Analisador V26.6.5 - asc.bet PRO")
+st.caption("Horario Manaus UTC-4 | 40 Ligas | Filtro Duplo ID+Nome | +Pais +Rodada +Posicao +PDF")
 
 API_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
 API_URL = "https://apiv2.apifootball.com/"
@@ -82,7 +82,7 @@ def calcular_probabilidade_final(casa_id, fora_id, league_id):
 
 def gerar_pdf(resultados, stats, ranking, periodo, ligas):
     pdf = FPDF(); pdf.add_page(); pdf.set_font('Arial', 'B', 16)
-    pdf.cell(0, 10, 'RELATORIO BACKTEST V26.6.4', 0, 1, 'C')
+    pdf.cell(0, 10, 'RELATORIO BACKTEST V26.6.5', 0, 1, 'C')
     pdf.set_font('Arial', '', 10); pdf.cell(0, 8, f'Periodo: {periodo} | Ligas: {", ".join(ligas)}', 0, 1, 'C'); pdf.ln(5)
     pdf.set_font('Arial', 'B', 12); pdf.cell(0, 8, 'RESUMO GERAL', 0, 1); pdf.set_font('Arial', '', 10)
     taxa_15 = (stats['1.5FT']['green'] / stats['1.5FT']['total'] * 100) if stats['1.5FT']['total'] > 0 else 0
@@ -97,7 +97,7 @@ def gerar_pdf(resultados, stats, ranking, periodo, ligas):
         pdf.cell(15, 6, str(row['Rodada']), 1); pdf.cell(15, 6, f"{row['Prob 1.5']}%", 1); pdf.cell(10, 6, str(row['FT']), 1); pdf.cell(15, 6, str(row['1.5FT']), 1); pdf.ln()
     return pdf.output(dest='S').encode('latin-1')
 
-# 40 LIGAS - CORRIGI O NOME "Besta deild karla"
+# 40 LIGAS
 LIGAS_MAP = {
     462:"Brasileirao A", 463:"Brasileirao B", 148:"Premier League", 152:"Championship",
     149:"La Liga", 207:"La Liga 2", 175:"Bundesliga", 176:"2. Bundesliga",
@@ -106,7 +106,7 @@ LIGAS_MAP = {
     253:"Campeonato Chileno", 255:"Primera B Chile", 339:"Allsvenskan", 340:"Eliteserien",
     341:"Superliga Dinamarca", 342:"Veikkausliiga", 343:"Premier League Russia",
     344:"MLS", 345:"Liga MX", 346:"Eredivisie", 347:"Liga Portugal",
-    348:"Super Lig Turquia", 349:"Premier League Ucrania", 350:"Besta deild karla", # CORRIGIDO
+    348:"Super Lig Turquia", 349:"Premier League Ucrania", 350:"Besta deild karla",
     351:"Superliga Grecia", 352:"Liga I Romania", 353:"Premijer Liga Bosnia",
     354:"HNL Croacia", 355:"Fortuna Liga Tcheca", 356:"Ekstraklasa Polonia",
     357:"Superliga Suica", 358:"Austrian Bundesliga", 359:"Jupiler Pro League",
@@ -115,9 +115,9 @@ LIGAS_MAP = {
 
 tab1, tab2, tab3 = st.tabs(["ANALISADOR AO VIVO", "BACKTEST PRO", "EXPORTAR PDF"])
 
-# ABA 1: AO VIVO
+# ABA 1: AO VIVO - FILTRO DUPLO
 with tab1:
-    st.header("ANALISADOR AO VIVO - V26.6.4")
+    st.header("ANALISADOR AO VIVO - V26.6.5")
     
     col1, col2 = st.columns(2)
     with col1:
@@ -130,24 +130,26 @@ with tab1:
         filtro_prob_vivo = st.slider("Filtro Prob Minima", 70, 95, 80)
     
     if st.button("ATUALIZAR AO VIVO"):
-        with st.spinner("Buscando jogos por liga..."):
+        with st.spinner("Buscando jogos por liga com filtro duplo..."):
             data_hoje = datetime.now().strftime("%Y-%m-%d")
             jogos_ao_vivo = []
             
-            ids_foco = {k: v for k, v in LIGAS_MAP.items() if v in ligas_ao_vivo} # dict agora
+            ids_foco = {k: v for k, v in LIGAS_MAP.items() if v in ligas_ao_vivo}
             
-            for league_id, nome_liga_selecionada in ids_foco.items():
-                # CORRECAO PRINCIPAL: Buscar 1 liga por vez
+            for league_id, nome_liga_esperado in ids_foco.items():
                 jogos_liga = api_call("get_events", {"league_id": league_id, "from": data_hoje, "to": data_hoje})
                 
                 if not isinstance(jogos_liga, list): continue
                 
                 standings_cache = get_standings(league_id)
-                pais, nome_liga = get_league_info(league_id)
+                pais, nome_liga_api = get_league_info(league_id)
                 
                 for jogo in jogos_liga:
                     status = jogo.get('match_status')
-                    if status not in ['Finished', 'Not Started', 'Postponed', 'Cancelled']:
+                    nome_liga_jogo = jogo.get('league_name')
+                    
+                    # FILTRO DUPLO: So aceita se ID e NOME baterem
+                    if status not in ['Finished', 'Not Started', 'Postponed', 'Cancelled'] and nome_liga_jogo == nome_liga_esperado:
                         try:
                             casa_id = jogo.get('match_hometeam_id')
                             fora_id = jogo.get('match_awayteam_id')
@@ -161,7 +163,7 @@ with tab1:
                                     "Data": jogo.get('match_date'),
                                     "Hora": jogo.get('match_time'),
                                     "Pais": pais,
-                                    "Liga": nome_liga,
+                                    "Liga": nome_liga_api,
                                     "Rodada": rodada,
                                     "Jogo": f"{jogo.get('match_hometeam_name')} vs {jogo.get('match_awayteam_name')}",
                                     "Pos Casa": standings_cache.get(str(casa_id), '-'),
@@ -190,11 +192,11 @@ with tab1:
                 
                 st.dataframe(df_vivo.style.map(color_result, subset=['1.5FT']).map(color_prob, subset=['Prob 1.5', 'Prob 2.5']), use_container_width=True)
             else:
-                st.warning("Nenhum jogo ao vivo encontrado nas ligas selecionadas hoje")
+                st.warning(f"Nenhum jogo AO VIVO hoje nas ligas: {', '.join(ligas_ao_vivo)}. Tente baixar o filtro de Prob para 70.")
 
-# ABA 2 E 3: IGUAIS A V26.6.3
+# ABA 2: BACKTEST PRO
 with tab2:
-    st.header("BACKTEST PRO - V26.6.4")
+    st.header("BACKTEST PRO - V26.6.5")
     col1, col2, col3, col4 = st.columns(4)
     with col1: data_inicio = st.date_input("Data Inicio", datetime(2025,8,1).date())
     with col2: data_fim = st.date_input("Data Fim", datetime(2025,9,30).date())
@@ -237,6 +239,7 @@ with tab2:
                 st.dataframe(df_bt.style.map(color_result, subset=['1.5FT']), use_container_width=True)
             else: st.error("Nenhum jogo encontrado")
 
+# ABA 3: EXPORTAR PDF
 with tab3:
     st.header("EXPORTAR RELATORIO PDF")
     if st.session_state.df_bt_global is not None:
@@ -245,5 +248,5 @@ with tab3:
             with st.spinner("Gerando PDF..."):
                 periodo = f"{data_inicio.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}"
                 pdf_bytes = gerar_pdf(st.session_state.df_bt_global, st.session_state.stats_global, st.session_state.ranking_global, periodo, ligas_selecionadas)
-                st.download_button(label="BAIXAR RELATORIO PDF", data=pdf_bytes, file_name=f"Relatorio_V26.6.4_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf", mime="application/pdf")
+                st.download_button(label="BAIXAR RELATORIO PDF", data=pdf_bytes, file_name=f"Relatorio_V26.6.5_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf", mime="application/pdf")
     else: st.warning("Primeiro rode o BACKTEST na aba 2 para gerar o PDF")
