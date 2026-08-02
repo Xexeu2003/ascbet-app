@@ -7,9 +7,18 @@ from collections import defaultdict
 from fpdf import FPDF
 import io
 
-st.set_page_config(page_title="Analisador V26.6.13", layout="wide")
-st.title("Analisador V26.6.13 - asc.bet PRO FINAL")
+st.set_page_config(page_title="Analisador V26.6.14", layout="wide")
+st.title("Analisador V26.6.14 - asc.bet PRO FINAL")
 st.caption("Horario Manaus UTC-4 | 40 LIGAS | TOP 20 | BACKTEST | PDF")
+
+# CORRECAO 1: INICIAR SESSION_STATE NO TOPO
+if 'df_top_global' not in st.session_state: 
+    st.session_state.df_top_global = None
+    st.session_state.ligas_global = []
+    st.session_state.filtro_global = 75
+if 'df_bt_global' not in st.session_state: 
+    st.session_state.df_bt_global = None
+    st.session_state.stats_global = None
 
 API_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
 API_URL = "https://apiv2.apifootball.com/"
@@ -88,29 +97,19 @@ def gerar_pdf(df, stats, ranking, periodo, ligas, filtro):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font('Arial', 'B', 16)
-    pdf.cell(0, 10, 'RELATORIO ANALISADOR V26.6.13', 0, 1, 'C')
+    pdf.cell(0, 10, 'RELATORIO ANALISADOR V26.6.14', 0, 1, 'C')
     pdf.set_font('Arial', '', 10)
     pdf.cell(0, 8, f'Gerado em: {datetime.now().strftime("%d/%m/%Y %H:%M")} | Manaus UTC-4', 0, 1, 'C')
     pdf.cell(0, 8, f'Periodo: {periodo} | Filtro Prob: >= {filtro}%', 0, 1, 'C')
     pdf.cell(0, 8, f'Ligas: {", ".join(ligas)}', 0, 1, 'C')
     pdf.ln(5)
-    
-    pdf.set_font('Arial', 'B', 12)
-    pdf.cell(0, 8, 'RESUMO GERAL BACKTEST', 0, 1)
-    pdf.set_font('Arial', '', 10)
-    taxa_15 = (stats['1.5FT']['green'] / stats['1.5FT']['total'] * 100) if stats['1.5FT']['total'] > 0 else 0
-    pdf.cell(0, 6, f'Taxa 1.5FT: {taxa_15:.1f}% - {stats["1.5FT"]["green"]}/{stats["1.5FT"]["total"]} jogos', 0, 1)
-    pdf.ln(5)
-    
     pdf.set_font('Arial', 'B', 12)
     pdf.cell(0, 8, f'TOP 20 JOGOS - {len(df)} encontrados', 0, 1)
     pdf.set_font('Arial', '', 8)
-    
     colunas = ["Data", "Liga", "Jogo", "Prob 1.5", "Prob 2.5"]
     for col in colunas:
         pdf.cell(38, 6, col[:12], 1)
     pdf.ln()
-    
     for _, row in df.head(20).iterrows():
         pdf.cell(38, 6, str(row['Data'])[:12], 1)
         pdf.cell(38, 6, str(row['Liga'])[:12], 1)
@@ -118,10 +117,9 @@ def gerar_pdf(df, stats, ranking, periodo, ligas, filtro):
         pdf.cell(38, 6, f"{row['Prob 1.5']}%", 1)
         pdf.cell(38, 6, f"{row['Prob 2.5']}%", 1)
         pdf.ln()
-    
     return pdf.output(dest='S').encode('latin-1')
 
-# 40 LIGAS - NOMES EXATOS DA API
+# CORRECAO 2: REMOVI EKSTRAKLASA DUPLICADA
 LIGAS_NOMES = {
     "Eliteserien": {"pais": "Norway", "liga": "Eliteserien"},
     "Ekstraklasa": {"pais": "Poland", "liga": "Ekstraklasa"}, 
@@ -156,19 +154,19 @@ LIGAS_NOMES = {
     "Ukrainian Premier League": {"pais": "Ukraine", "liga": "Premier League"},
     "HNL": {"pais": "Croatia", "liga": "HNL"},
     "Czech Liga": {"pais": "Czech Republic", "liga": "1. Liga"},
-    "Ekstraklasa": {"pais": "Poland", "liga": "Ekstraklasa"},
     "Liga I": {"pais": "Romania", "liga": "Liga I"},
     "Scottish Premiership": {"pais": "Scotland", "liga": "Premiership"},
     "J2 League": {"pais": "Japan", "liga": "J2 League"},
     "K League 2": {"pais": "Korea Republic", "liga": "K League 2"},
     "A-League": {"pais": "Australia", "liga": "A-League"},
-    "Liga Portugal 2": {"pais": "Portugal", "liga": "Liga Portugal 2"}
+    "Liga Portugal 2": {"pais": "Portugal", "liga": "Liga Portugal 2"},
+    "Division Profesional": {"pais": "Paraguay", "liga": "Division Profesional"}
 }
 
 tab1, tab2, tab3 = st.tabs(["ANALISADOR TOP 20", "BACKTEST PRO", "EXPORTAR PDF"])
 
 with tab1:
-    st.header("ANALISADOR TOP 20 - V26.6.13")
+    st.header("ANALISADOR TOP 20 - V26.6.14")
     
     col1, col2, col3 = st.columns([2,1,1])
     with col1:
@@ -240,6 +238,7 @@ with tab1:
                                     
                             except: continue
             
+            # SALVA NO SESSION STATE
             st.session_state.df_top_global = pd.DataFrame(jogos_totais) if jogos_totais else None
             st.session_state.ligas_global = ligas_ao_vivo
             st.session_state.filtro_global = filtro_prob_vivo
@@ -257,11 +256,9 @@ with tab1:
                 df_top = pd.DataFrame(jogos_analisados).sort_values("Prob 1.5", ascending=False).head(20)
                 st.success(f"TOP 20 FILTRADO - {len(df_top)} jogos com Prob 1.5 >= {filtro_prob_vivo}%")
                 st.dataframe(df_top.style.map(color_prob, subset=['Prob 0.5', 'Prob 1.5', 'Prob 2.5', 'Prob %']), use_container_width=True)
-            else:
-                st.warning(f"Nenhum jogo passou do filtro de Prob >= {filtro_prob_vivo}%.")
 
 with tab2:
-    st.header("BACKTEST PRO - V26.6.13")
+    st.header("BACKTEST PRO - V26.6.14")
     col1, col2, col3, col4 = st.columns(4)
     with col1: data_inicio_bt = st.date_input("Data Inicio", datetime(2025,8,1).date())
     with col2: data_fim_bt = st.date_input("Data Fim", datetime(2025,9,30).date())
@@ -270,13 +267,10 @@ with tab2:
     ligas_selecionadas = st.multiselect("Selecionar Ligas BT", list(LIGAS_NOMES.keys()), default=["K League 1"])
     limite_bt = st.slider("Prob Minima BT", 50, 90, 75)
     
-    if 'df_bt_global' not in st.session_state: st.session_state.df_bt_global = None; st.session_state.stats_global = None
-    
     if st.button("RODAR BACKTEST"):
         with st.spinner("Rodando backtest..."):
             data_de = data_inicio_bt.strftime("%Y-%m-%d"); data_ate = data_fim_bt.strftime("%Y-%m-%d")
             resultados_bt = []; stats = {"1.5FT": {"total":0, "green":0}}
-            ranking_ligas = defaultdict(lambda: {"total":0, "green":0})
             
             todos_jogos_bt = api_call("get_events", {"from": data_de, "to": data_ate}); 
             
@@ -293,7 +287,6 @@ with tab2:
                                     gols_ft = safe_int(jogo.get('match_hometeam_score')) + safe_int(jogo.get('match_awayteam_score'))
                                     green_15 = gols_ft >= 2
                                     stats["1.5FT"]["total"] += 1; stats["1.5FT"]["green"] += 1 if green_15 else 0
-                                    ranking_ligas[jogo.get('league_name')]["total"] += 1; ranking_ligas[jogo.get('league_name')]["green"] += 1 if green_15 else 0
                                     resultados_bt.append({"Data": jogo.get('match_date'), "Jogo": f"{jogo.get('match_hometeam_name')} vs {jogo.get('match_awayteam_name')}", "Liga": jogo.get('league_name'), "Prob 1.5": p_1_5, "FT": gols_ft, "1.5FT": "GREEN" if green_15 else "RED"})
                             except: continue
             
@@ -312,5 +305,5 @@ with tab3:
         if st.button("GERAR PDF TOP 20"):
             with st.spinner("Gerando PDF..."):
                 pdf_bytes = gerar_pdf(st.session_state.df_top_global, {"1.5FT":{"total":0,"green":0}}, {}, periodo, st.session_state.ligas_global, st.session_state.filtro_global)
-                st.download_button(label="BAIXAR RELATORIO PDF", data=pdf_bytes, file_name=f"Relatorio_V26.6.13_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf", mime="application/pdf")
+                st.download_button(label="BAIXAR RELATORIO PDF", data=pdf_bytes, file_name=f"Relatorio_V26.6.14_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf", mime="application/pdf")
     else: st.warning("Primeiro gere o TOP 20 na aba 1 para baixar o PDF")
