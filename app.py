@@ -7,9 +7,9 @@ from collections import defaultdict
 from fpdf import FPDF
 from io import BytesIO
 
-st.set_page_config(page_title="Analisador V26.7.3", layout="wide")
-st.title("Analisador V26.7.3 - asc.bet PRO TURBO")
-st.caption("Horario Manaus UTC-4 | 43 LIGAS | CROACIA + SUICA + EQUADOR | ODD REAL | ROI | PDF")
+st.set_page_config(page_title="Analisador V26.7.4", layout="wide")
+st.title("Analisador V26.7.4 - asc.bet PRO TURBO")
+st.caption("Horario Manaus UTC-4 | 43 LIGAS | CROACIA + SUICA + EQUADOR | ODD REAL | ROI | PDF PRO")
 
 # SESSION STATE
 if 'df_top_global' not in st.session_state:
@@ -116,48 +116,85 @@ def calcular_roi(greens, total, stake, odd):
 
 def gerar_pdf(df, stats, ranking, periodo, ligas, filtro):
     if df is None or len(df) == 0: return b""
-    pdf = FPDF()
+    pdf = FPDF('L', 'mm', 'A4') # PAISAGEM
     pdf.add_page()
-    pdf.set_font('Arial', 'B', 16)
-    pdf.cell(0, 10, 'RELATORIO ANALISADOR V26.7.3', 0, 1, 'C')
-    pdf.set_font('Arial', '', 10)
-    pdf.cell(0, 8, f'Gerado em: {datetime.now().strftime("%d/%m/%Y %H:%M")} | Manaus UTC-4', 0, 1, 'C')
-    pdf.cell(0, 8, f'Periodo: {periodo} | Filtro Prob: >= {filtro}%', 0, 1, 'C')
-    pdf.cell(0, 8, f'Ligas: {", ".join(ligas)}', 0, 1, 'C')
+
+    # MARCA D'AGUA
+    pdf.set_font('Arial', 'B', 50)
+    pdf.set_text_color(230, 230, 230) # Cinza claro
+    pdf.rotate(45) # Gira 45 graus
+    pdf.text(40, 130, 'ASC.BET PRO')
+    pdf.rotate(0) # Volta rotação
+    pdf.set_text_color(0, 0, 0) # Volta cor preta
+
+    # LOGO TOPO
+    pdf.set_font('Arial', 'B', 24)
+    pdf.set_text_color(0, 150, 0) # Verde
+    pdf.cell(0, 10, 'asc.bet', 0, 1, 'C')
+    pdf.set_text_color(0, 0, 0) # Volta cor preta
+
+    # TITULO
+    pdf.set_font('Arial', 'B', 14)
+    pdf.cell(0, 8, f'Relatorio Analisador V26.7.4 - TOP 20 - {datetime.now().strftime("%d/%m/%Y %H:%M")}', 0, 1, 'C')
+    pdf.ln(2)
+
+    # INFO
+    pdf.set_font('Arial', '', 9)
+    pdf.cell(0, 6, f'Gerado em: {datetime.now().strftime("%d/%m/%Y %H:%M")} | Manaus UTC-4', 0, 1, 'C')
+    pdf.cell(0, 6, f'Periodo: {periodo} | Filtro Prob: >= {filtro}%', 0, 1, 'C')
+    pdf.cell(0, 6, f'Ligas: {", ".join(ligas)}', 0, 1, 'C')
     pdf.ln(5)
+
+    # RANKING
     if ranking:
-        pdf.set_font('Arial', 'B', 12)
-        pdf.cell(0, 8, 'RANKING DE LIGAS - TAXA 1.5FT', 0, 1)
+        pdf.set_font('Arial', 'B', 11)
+        pdf.cell(0, 7, 'RANKING DE LIGAS - TAXA 1.5FT', 0, 1)
         pdf.set_font('Arial', '', 9)
         ranking_ordenado = sorted(ranking.items(), key=lambda x: (x[1]['green']/x[1]['total']*100 if x[1]['total']>0 else 0), reverse=True)
         for liga, dados in ranking_ordenado[:10]:
             taxa = (dados['green']/dados['total']*100) if dados['total']>0 else 0
             liga_clean = liga.encode('latin-1', 'replace').decode('latin-1')
-            pdf.cell(0, 6, f"{liga_clean}: {taxa:.1f}% - {dados['green']}/{dados['total']}", 0, 1)
-        pdf.ln(5)
-    pdf.set_font('Arial', 'B', 12)
-    pdf.cell(0, 8, f'TOP 20 JOGOS - {len(df)} encontrados', 0, 1)
-    pdf.set_font('Arial', '', 8)
-    colunas = ["Data", "Liga", "Jogo", "Odd", "Prob 1.5", "Prob 2.5"]
-    for col in colunas:
-        pdf.cell(31, 6, col[:10], 1)
+            pdf.cell(0, 5, f"{liga_clean}: {taxa:.1f}% - {dados['green']}/{dados['total']}", 0, 1)
+        pdf.ln(4)
+
+    # TABELA
+    pdf.set_font('Arial', 'B', 10)
+    pdf.cell(0, 7, f'TOP 20 JOGOS - {len(df)} encontrados', 0, 1)
+
+    # Cabeçalho da tabela
+    pdf.set_font('Arial', 'B', 7)
+    col_widths = [18, 25, 8, 55, 15, 12, 12, 12, 16, 16, 16, 14]
+    headers = ["Data", "Liga", "Rod", "Jogo", "Pos", "H2H", "GC U8", "GF U8", "Prob 0.5", "Prob 1.5", "Prob 2.5", "Prob %"]
+    for i, header in enumerate(headers):
+        pdf.cell(col_widths[i], 6, header, 1, 0, 'C')
     pdf.ln()
+
+    # Linhas da tabela
+    pdf.set_font('Arial', '', 7)
     for _, row in df.head(20).iterrows():
         data = str(row['Data'])[:10].encode('latin-1', 'replace').decode('latin-1')
-        liga = str(row['Liga'])[:10].encode('latin-1', 'replace').decode('latin-1')
-        jogo = str(row['Jogo'])[:18].encode('latin-1', 'replace').decode('latin-1')
-        pdf.cell(31, 6, data, 1)
-        pdf.cell(31, 6, liga, 1)
-        pdf.cell(31, 6, jogo, 1)
-        pdf.cell(31, 6, f"{row['Odd']:.2f}", 1)
-        pdf.cell(31, 6, f"{row['Prob 1.5']}%", 1)
-        pdf.cell(31, 6, f"{row['Prob 2.5']}%", 1)
+        liga = str(row['Liga'])[:12].encode('latin-1', 'replace').decode('latin-1')
+        jogo = str(row['Jogo'])[:30].encode('latin-1', 'replace').decode('latin-1')
+
+        pdf.cell(col_widths[0], 6, data, 1)
+        pdf.cell(col_widths[1], 6, liga, 1)
+        pdf.cell(col_widths[2], 6, str(row.get('Rod','-')), 1, 0, 'C')
+        pdf.cell(col_widths[3], 6, jogo, 1)
+        pdf.cell(col_widths[4], 6, str(row.get('Pos','-')), 1, 0, 'C')
+        pdf.cell(col_widths[5], 6, str(row.get('H2H','-')), 1, 0, 'C')
+        pdf.cell(col_widths[6], 6, f"{row.get('GC U8',0):.2f}", 1, 0, 'C')
+        pdf.cell(col_widths[7], 6, f"{row.get('GF U8',0):.2f}", 1, 0, 'C')
+        pdf.cell(col_widths[8], 6, f"{row['Prob 0.5']}%", 1, 0, 'C')
+        pdf.cell(col_widths[9], 6, f"{row['Prob 1.5']}%", 1, 0, 'C')
+        pdf.cell(col_widths[10], 6, f"{row['Prob 2.5']}%", 1, 0, 'C')
+        pdf.cell(col_widths[11], 6, f"{row['Prob %']}%", 1, 0, 'C')
         pdf.ln()
+
     buffer = BytesIO()
     pdf.output(buffer)
     return buffer.getvalue()
 
-# 43 LIGAS AGORA - ADICIONEI CROACIA + SUICA + EQUADOR
+# 43 LIGAS
 LIGAS_NOMES = {
     "Eliteserien": {"pais": "Norway", "liga": "Eliteserien"}, "Ekstraklasa": {"pais": "Poland", "liga": "Ekstraklasa"},
     "Primera B": {"pais": "Chile", "liga": "Primera B"}, "LPF": {"pais": "Argentina", "liga": "Liga Profesional Argentina"},
@@ -179,7 +216,6 @@ LIGAS_NOMES = {
     "Scottish Premiership": {"pais": "Scotland", "liga": "Premiership"}, "J2 League": {"pais": "Japan", "liga": "J2 League"},
     "K League 2": {"pais": "Korea Republic", "liga": "K League 2"}, "A-League": {"pais": "Australia", "liga": "A-League"},
     "Liga Portugal 2": {"pais": "Portugal", "liga": "Liga Portugal 2"},
-    # NOVAS LIGAS ADICIONADAS
     "Super League Suica": {"pais": "Switzerland", "liga": "Super League"},
     "HNL Croacia": {"pais": "Croatia", "liga": "HNL"},
     "Serie A Equador": {"pais": "Ecuador", "liga": "Liga Pro"}
@@ -188,7 +224,7 @@ LIGAS_NOMES = {
 tab1, tab2, tab3 = st.tabs(["ANALISADOR TOP 20", "BACKTEST PRO", "EXPORTAR PDF"])
 
 with tab1:
-    st.header("ANALISADOR TOP 20 - V26.7.3 - 43 LIGAS")
+    st.header("ANALISADOR TOP 20 - V26.7.4 - 43 LIGAS")
     col1, col2, col3 = st.columns([2,1,1])
     with col1:
         ligas_ao_vivo = st.multiselect("Selecionar Ligas", list(LIGAS_NOMES.keys()), default=["Eliteserien", "Ekstraklasa", "Primera B", "LPF", "Brasileirao A", "K League 1", "HNL Croacia", "Super League Suica", "Serie A Equador"])
@@ -272,7 +308,7 @@ with tab1:
                 st.dataframe(df_ranking, use_container_width=True)
 
 with tab2:
-    st.header("BACKTEST PRO - V26.7.3 COM ROI")
+    st.header("BACKTEST PRO - V26.7.4 COM ROI")
     col1, col2, col3, col4 = st.columns(4)
     with col1: data_inicio_bt = st.date_input("Data Inicio", datetime(2025,8,1).date())
     with col2: data_fim_bt = st.date_input("Data Fim", datetime(2025,9,30).date())
@@ -317,14 +353,14 @@ with tab2:
             else: st.error("Nenhum jogo encontrado no backtest")
 
 with tab3:
-    st.header("EXPORTAR RELATORIO PDF")
+    st.header("EXPORTAR RELATORIO PDF PRO")
     if st.session_state.df_top_global is not None and len(st.session_state.df_top_global) > 0:
         st.success("Dados do TOP 20 carregados")
         periodo = f"{datetime.now().strftime('%d/%m/%Y')}"
-        if st.button("GERAR PDF TOP 20"):
-            with st.spinner("Gerando PDF..."):
+        if st.button("GERAR PDF PRO"):
+            with st.spinner("Gerando PDF com Logo e Marca d'Agua..."):
                 pdf_bytes = gerar_pdf(st.session_state.df_top_global, st.session_state.stats_global, st.session_state.ranking_global, periodo, st.session_state.ligas_global, st.session_state.filtro_global)
                 if len(pdf_bytes) > 0:
-                    st.download_button(label="BAIXAR RELATORIO PDF", data=pdf_bytes, file_name=f"Relatorio_V26.7.3_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf", mime="application/pdf")
+                    st.download_button(label="BAIXAR RELATORIO PDF", data=pdf_bytes, file_name=f"Relatorio_V26.7.4_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf", mime="application/pdf")
                 else: st.error("Erro ao gerar PDF")
     else: st.warning("Primeiro gere o TOP 20 na aba 1 para baixar o PDF")
