@@ -7,9 +7,9 @@ from collections import defaultdict
 from fpdf import FPDF
 from io import BytesIO
 
-st.set_page_config(page_title="Analisador V26.7.4", layout="wide")
-st.title("Analisador V26.7.4 - asc.bet PRO TURBO")
-st.caption("Horario Manaus UTC-4 | 43 LIGAS | CROACIA + SUICA + EQUADOR | ODD REAL | ROI | PDF PRO")
+st.set_page_config(page_title="Analisador V26.7.5", layout="wide")
+st.title("Analisador V26.7.5 - asc.bet PRO TURBO")
+st.caption("Horario Manaus UTC-4 | 43 LIGAS | PDF PRO COM MARCA D'AGUA CENTRALIZADA")
 
 # SESSION STATE
 if 'df_top_global' not in st.session_state:
@@ -119,11 +119,11 @@ def gerar_pdf(df, stats, ranking, periodo, ligas, filtro):
     pdf = FPDF('L', 'mm', 'A4') # PAISAGEM
     pdf.add_page()
 
-    # MARCA D'AGUA
-    pdf.set_font('Arial', 'B', 50)
-    pdf.set_text_color(230, 230, 230) # Cinza claro
+    # MARCA D'AGUA CENTRALIZADA
+    pdf.set_font('Arial', 'B', 60) # Fonte maior
+    pdf.set_text_color(235, 235, 235) # Cinza bem claro
     pdf.rotate(45) # Gira 45 graus
-    pdf.text(40, 130, 'ASC.BET PRO')
+    pdf.text(60, 110, 'ASC.BET PRO') # Posição centralizada
     pdf.rotate(0) # Volta rotação
     pdf.set_text_color(0, 0, 0) # Volta cor preta
 
@@ -135,7 +135,7 @@ def gerar_pdf(df, stats, ranking, periodo, ligas, filtro):
 
     # TITULO
     pdf.set_font('Arial', 'B', 14)
-    pdf.cell(0, 8, f'Relatorio Analisador V26.7.4 - TOP 20 - {datetime.now().strftime("%d/%m/%Y %H:%M")}', 0, 1, 'C')
+    pdf.cell(0, 8, f'Relatorio Analisador V26.7.5 - TOP 20 - {datetime.now().strftime("%d/%m/%Y %H:%M")}', 0, 1, 'C')
     pdf.ln(2)
 
     # INFO
@@ -224,7 +224,7 @@ LIGAS_NOMES = {
 tab1, tab2, tab3 = st.tabs(["ANALISADOR TOP 20", "BACKTEST PRO", "EXPORTAR PDF"])
 
 with tab1:
-    st.header("ANALISADOR TOP 20 - V26.7.4 - 43 LIGAS")
+    st.header("ANALISADOR TOP 20 - V26.7.5 - 43 LIGAS")
     col1, col2, col3 = st.columns([2,1,1])
     with col1:
         ligas_ao_vivo = st.multiselect("Selecionar Ligas", list(LIGAS_NOMES.keys()), default=["Eliteserien", "Ekstraklasa", "Primera B", "LPF", "Brasileirao A", "K League 1", "HNL Croacia", "Super League Suica", "Serie A Equador"])
@@ -308,7 +308,7 @@ with tab1:
                 st.dataframe(df_ranking, use_container_width=True)
 
 with tab2:
-    st.header("BACKTEST PRO - V26.7.4 COM ROI")
+    st.header("BACKTEST PRO - V26.7.5 COM ROI")
     col1, col2, col3, col4 = st.columns(4)
     with col1: data_inicio_bt = st.date_input("Data Inicio", datetime(2025,8,1).date())
     with col2: data_fim_bt = st.date_input("Data Fim", datetime(2025,9,30).date())
@@ -358,9 +358,9 @@ with tab3:
         st.success("Dados do TOP 20 carregados")
         periodo = f"{datetime.now().strftime('%d/%m/%Y')}"
         if st.button("GERAR PDF PRO"):
-            with st.spinner("Gerando PDF com Logo e Marca d'Agua..."):
+            with st.spinner("Gerando PDF com Marca d'Agua Centralizada..."):
                 pdf_bytes = gerar_pdf(st.session_state.df_top_global, st.session_state.stats_global, st.session_state.ranking_global, periodo, st.session_state.ligas_global, st.session_state.filtro_global)
                 if len(pdf_bytes) > 0:
-                    st.download_button(label="BAIXAR RELATORIO PDF", data=pdf_bytes, file_name=f"Relatorio_V26.7.4_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf", mime="application/pdf")
+                    st.download_button(label="BAIXAR RELATORIO PDF", data=pdf_bytes, file_name=f"Relatorio_V26.7.5_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf", mime="application/pdf")
                 else: st.error("Erro ao gerar PDF")
     else: st.warning("Primeiro gere o TOP 20 na aba 1 para baixar o PDF")
