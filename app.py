@@ -12,12 +12,12 @@ from reportlab.lib.units import cm
 from datetime import datetime, timedelta
 import pytz
 
-VERSAO = "V26.7.6"
+VERSAO = "V26.7.7"
 MARCA_DAGUA = "asc.bet"
 API_FOOTBALL_URL = "https://apiv3.apifootball.com/"
 API_FOOTBALL_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
 
-ODDS_API_KEY = "cc7a0c9ee51e4bc96110d49730acacaa"
+ODDS_API_KEY = "cc7a0c9ee51e4bc96110d49730acaa"
 ODDS_API_URL = "https://api.the-odds-api.com/v4/sports"
 
 LIGAS_MAPA = {
@@ -73,11 +73,14 @@ def gerar_pdf_buffer(df):
         dados_tabela = [colunas] + grupo[colunas].values.tolist()
         larguras = [2.2*cm, 1*cm, 4.5*cm, 1*cm, 4.5*cm, 1.8*cm, 2.2*cm, 2*cm]
         tabela = Table(dados_tabela, colWidths=larguras, repeatRows=1)
+        
+        # AQUI ESTAVA O ERRO - FALTAVA O ]
         estilo = TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1A365D")), ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'), ('FONTSIZE', (0,0), (-1,-1), 8),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E0")),
             ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor("#F7FAFC")])
+        ]) # <-- FECHEI AQUI
 
         for i in range(1, len(dados_tabela)):
             cor_texto, cor_fundo = get_cor_prob(dados_tabela[i][6])
@@ -165,7 +168,6 @@ def calcular_prob_poisson(home_id, away_id, league_id, home_name, away_name, lea
 @st.cache_data(ttl=1800)
 def carregar_dados():
     todos_jogos = []
-    # CORREÇÃO 1: Pega data de Manaus e +2 dias pra frente
     tz_br = pytz.timezone('America/Manaus')
     hoje_br = datetime.now(tz_br)
     data_inicio = hoje_br.strftime("%Y-%m-%d")
@@ -181,7 +183,6 @@ def carregar_dados():
             r = requests.get(API_FOOTBALL_URL, params=params, timeout=15)
             jogos = r.json()
             
-            # CORREÇÃO 2: Mostra erro da API se tiver
             if isinstance(jogos, dict) and 'message' in jogos:
                 st.warning(f"Erro na liga {nome_liga}: {jogos['message']}")
                 continue
@@ -209,4 +210,4 @@ if not df.empty:
     pdf_buffer = gerar_pdf_buffer(df)
     st.download_button("📥 Baixar PDF do Relatorio", data=pdf_buffer, file_name=f"Relatorio_Analisador_{VERSAO}_{datetime.now().strftime('%d%m%Y')}.pdf", mime="application/pdf", use_container_width=True)
 else:
-    st.error("Nenhum jogo encontrado nos proximos 3 dias para as ligas TOP. Isso é normal no plano free da API.")
+    st.error("Nenhum jogo encontrado nos proximos 3 dias para as ligas TOP.")
