@@ -15,7 +15,7 @@ import time
 import os
 import json
 
-VERSAO = "V26.14.3"
+VERSAO = "V26.15.0"
 MARCA_DAGUA = "asc.bet"
 API_FOOTBALL_URL = "https://apiv3.apifootball.com/"
 API_FOOTBALL_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
@@ -25,21 +25,23 @@ ODDS_API_KEY = "cc7a0c9ee51e4bc96110d49730acaa"
 ODDS_API_URL = "https://api.the-odds-api.com/v4/sports"
 REFRESH_MINUTOS = 120
 
+# LIGAS CORRIGIDAS - IDs TESTADOS 2026
 LIGAS_MAPA = {
-    534: {"nome": "SUECIA ALLSVENSKAN", "odds_key": "soccer_sweden_allsvenskan"},
-    103: {"nome": "NORUEGA ELITESERIEN", "odds_key": "soccer_norway_eliteserien"},
-    522: {"nome": "FINLANDIA VEIKKAUSLIIGA", "odds_key": "soccer_finland_veikkausliiga"},
-    198: {"nome": "ISLANDIA BESTA DEILD", "odds_key": "soccer_iceland_urvalsdeild"},
-    337: {"nome": "ESTONIA MEISTRILIIGA", "odds_key": None},
-    340: {"nome": "LETONIA VIRSLIGA", "odds_key": None},
-    341: {"nome": "LITUANIA A LYGA", "odds_key": None},
-    523: {"nome": "ILHAS FAROE BETRI DEILDIN", "odds_key": None},
-    175: {"nome": "IRLANDA LEAGUE OF IRELAND", "odds_key": "soccer_ireland_premier_league"},
+    534: {"nome": "SUECIA ALLSVENSKAN", "odds_key": "soccer_sweden_allsvenskan", "pais": "Sweden"},
+    103: {"nome": "NORUEGA ELITESERIEN", "odds_key": "soccer_norway_eliteserien", "pais": "Norway"},
+    522: {"nome": "FINLANDIA VEIKKAUSLIIGA", "odds_key": "soccer_finland_veikkausliiga", "pais": "Finland"},
+    198: {"nome": "ISLANDIA BESTA DEILD", "odds_key": "soccer_iceland_urvalsdeild", "pais": "Iceland"},
+    337: {"nome": "ESTONIA MEISTRILIIGA", "odds_key": None, "pais": "Estonia"},
+    340: {"nome": "LETONIA VIRSLIGA", "odds_key": None, "pais": "Latvia"},
+    341: {"nome": "LITUANIA A LYGA", "odds_key": None, "pais": "Lithuania"},
+    523: {"nome": "ILHAS FAROE BETRI DEILDIN", "odds_key": None, "pais": "Faroe Islands"},
+    175: {"nome": "IRLANDA LEAGUE OF IRELAND", "odds_key": "soccer_ireland_premier_league", "pais": "Ireland"},
 }
 
 st.set_page_config(page_title=f"Analisador asc.bet {VERSAO}", layout="wide")
-st.title(f"Analisador asc.bet {VERSAO} - TOP 10 + Histórico 7 Dias")
+st.title(f"Analisador asc.bet {VERSAO} - TOP 10 + Trava Liga + Green/Red")
 
+# AUTO REFRESH
 if 'last_update' not in st.session_state:
     st.session_state.last_update = time.time()
 if time.time() - st.session_state.last_update > REFRESH_MINUTOS * 60:
@@ -58,6 +60,15 @@ def carregar_historico():
 
 def salvar_historico(historico):
     with open(HISTORICO_FILE, 'w', encoding='utf-8') as f: json.dump(historico, f)
+
+def atualizar_status_jogo(jogo_id, status):
+    historico = carregar_historico()
+    for j in historico:
+        if j['id'] == jogo_id:
+            j['status'] = status
+            j['data_result'] = datetime.now().strftime("%d/%m/%Y %H:%M")
+    salvar_historico(historico)
+    st.rerun()
 
 def atualizar_historico(df_novo):
     historico = carregar_historico()
@@ -83,12 +94,23 @@ def mostrar_historico():
     greens = len(df_hist[df_hist['status'] == 'green'])
     reds = len(df_hist[df_hist['status'] == 'red'])
     assertividade = (greens / total * 100) if total > 0 else 0
-    st.sidebar.subheader(f"📊 Historico 7 Dias")
-    st.sidebar.metric("Assertividade Over 1.5", f"{assertividade:.1f}%")
-    st.sidebar.metric("Green", greens, delta=greens)
-    st.sidebar.metric("Red", reds, delta=-reds)
-    with st.sidebar.expander("Ver ultimos 10 jogos"):
-        st.dataframe(df_hist.tail(10)[['data_prev', 'casa', 'fora', 'value', 'status']], use_container_width=True)
+    
+    st.sidebar.subheader(f"📊 Assertividade 7 Dias")
+    st.sidebar.metric("Taxa de Acerto", f"{assertividade:.1f}%")
+    col1, col2 = st.sidebar.columns(2)
+    col1.metric("Green", greens)
+    col2.metric("Red", reds)
+    
+    with st.sidebar.expander("Marcar Resultados Pendentes"):
+        pendentes = [j for j in historico if j['status'] == 'pendente']
+        for jogo in pendentes[:5]: # Mostra só 5 pra não poluir
+            st.write(f"**{jogo['casa']} x {jogo['fora']}**")
+            st.caption(f"{jogo['liga']} | Value: {jogo['value']}")
+            col1, col2 = st.columns(2)
+            if col1.button("✅ Green", key=f"g_{jogo['id']}"):
+                atualizar_status_jogo(jogo['id'], 'green')
+            if col2.button("❌ Red", key=f"r_{jogo['id']}"):
+                atualizar_status_jogo(jogo['id'], 'red')
 
 def poisson_prob(goals, lamb): return poisson.pmf(goals, lamb)
 def calc_prob_over(lamb, linha): return 1 - sum([poisson_prob(i, lamb) for i in range(int(linha))])
@@ -120,7 +142,7 @@ def gerar_pdf_buffer(df):
 
     for liga, grupo in df.groupby('Liga'):
         elementos.append(Paragraph(f"LIGA: {liga}", styles['LigaTitulo']))
-        colunas = ["Data", "PosCasa", "Casa", "PosFora", "Fora", "Odd 1.5", "Prob 0.5HT", "Prob 1.5FT", "Prob 2.5FT", "BTTS", "ProbCasa", "ProbEmpate", "ProbFora", "Value"] # CORRIGIDO
+        colunas = ["Data", "PosCasa", "Casa", "PosFora", "Fora", "Odd 1.5", "Prob 0.5HT", "Prob 1.5FT", "Prob 2.5FT", "BTTS", "ProbCasa", "ProbEmpate", "ProbFora", "Value"]
         dados_tabela = [colunas] + grupo[colunas].values.tolist()
         larguras = [1.6*cm, 0.9*cm, 2.5*cm, 0.9*cm, 2.5*cm, 1.3*cm, 1.4*cm, 1.4*cm, 1.4*cm, 1.2*cm, 1.2*cm, 1.2*cm, 1.2*cm, 1.4*cm]
         tabela = Table(dados_tabela, colWidths=larguras, repeatRows=1)
@@ -135,7 +157,7 @@ def gerar_pdf_buffer(df):
             estilo.add('TEXTCOLOR', (7, i), (7, i), cor_texto)
             estilo.add('FONTNAME', (7, i), (7, i), 'Helvetica-Bold')
             if cor_fundo!= colors.white: estilo.add('BACKGROUND', (7, i), (7, i), cor_fundo)
-            for col in [10, 11, 12]: # ProbCasa ProbEmpate ProbFora
+            for col in [10, 11, 12]:
                 try:
                     if float(dados_tabela[i][col].replace('%','')) > 50:
                         estilo.add('BACKGROUND', (col, i), (col, i), colors.HexColor("#BFDBFE"))
@@ -237,12 +259,16 @@ def carregar_dados(ligas_selecionadas, filtro_value, filtro_prob, mostrar_todos)
         for league_id in ligas_selecionadas:
             info = LIGAS_MAPA[league_id]
             nome_liga = info["nome"]
+            pais_liga = info["pais"]
             league_key = info["odds_key"]
             params = {"action": "get_events", "league_id": league_id, "from": data_inicio, "to": data_fim, "APIkey": API_FOOTBALL_KEY}
             r = requests.get(API_FOOTBALL_URL, params=params, timeout=15)
             jogos = r.json()
             if isinstance(jogos, list):
                 for jogo in jogos:
+                    # TRAVA LIGA: Só aceita se o país do jogo = país da liga
+                    if jogo.get('country_name', '')!= pais_liga:
+                        continue
                     if jogo['match_status'] not in ["", "Not Started", "NS"]: continue
                     p05, p15, p25, btts, p_casa, p_empate, p_fora, pos_home, pos_away, odd, value = calcular_prob_poisson(
                         jogo['match_hometeam_id'], jogo['match_awayteam_id'], league_id,
@@ -253,10 +279,10 @@ def carregar_dados(ligas_selecionadas, filtro_value, filtro_prob, mostrar_todos)
                         if val_num < filtro_value and prob_num < filtro_prob: continue
                     todos_jogos.append({
                         "Liga": nome_liga, "Data": datetime.strptime(jogo['match_date'], "%Y-%m-%d").strftime("%d/%m/%Y"),
-                        "PosCasa": pos_home, "Casa": jogo['match_hometeam_name'], # NOME
-                        "PosFora": pos_away, "Fora": jogo['match_awayteam_name'], # NOME
+                        "PosCasa": pos_home, "Casa": jogo['match_hometeam_name'],
+                        "PosFora": pos_away, "Fora": jogo['match_awayteam_name'],
                         "Odd 1.5": odd, "Prob 0.5HT": p05, "Prob 1.5FT": p15, "Prob 2.5FT": p25,
-                        "BTTS": btts, "ProbCasa": p_casa, "ProbEmpate": p_empate, "ProbFora": p_fora, "Value": value, # PROB
+                        "BTTS": btts, "ProbCasa": p_casa, "ProbEmpate": p_empate, "ProbFora": p_fora, "Value": value,
                         "ValueNum": val_num, "ProbNum": prob_num
                     })
     return pd.DataFrame(todos_jogos)
@@ -277,7 +303,7 @@ if not df.empty:
     atualizar_historico(df)
     top3 = df[df['ValueNum'] > 40].sort_values(by='ValueNum', ascending=False).head(3)
     if not top3.empty:
-        top3_text = " | ".join([f"{row['Casa']} x {row['Fora']} - {row['Value']}" for _, row in top3.iterrows()]) # CORRIGIDO
+        top3_text = " | ".join([f"{row['Casa']} x {row['Fora']} - {row['Value']}" for _, row in top3.iterrows()])
         st.success(f"🔥 TOP 3 DO DIA - Value > 40%: {top3_text}")
     df = df.sort_values(by='ProbNum', ascending=False).head(10)
     df_display = df.drop(columns=['ValueNum', 'ProbNum'])
@@ -287,6 +313,6 @@ if not df.empty:
         pdf_buffer = gerar_pdf_buffer(df_display)
         st.download_button("📥 Baixar PDF", data=pdf_buffer, file_name=f"Relatorio_{VERSAO}_{datetime.now().strftime('%d%m%Y')}.pdf", mime="application/pdf", use_container_width=True)
     with col2:
-        st.info("CSV desativado. Use o Historico na sidebar pra ver assertividade")
+        st.info("Use a sidebar para marcar Green/Red dos jogos")
 else:
     st.warning("Nenhum jogo encontrado. Marque 'Mostrar todos os jogos'")
