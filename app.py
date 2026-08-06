@@ -11,10 +11,17 @@ import random
 st.set_page_config(page_title="Analisador asc.bet FREE", layout="wide")
 
 # --- CONFIG THE ODDS API ---
-ODDS_API_KEY = st.secrets.get("ODDS_API_KEY", "7779b153071a617ec6767463223c2eb1") # Sua KEY da print
+ODDS_API_KEY = "7779b153071a617ec6767463223c2eb1"
 
-# Esportes que a The Odds API tem. Use "soccer_brazil_serie_a"
-SPORTS = ["soccer_brazil_serie_a", "soccer_epl", "soccer_spain_la_liga"]
+# LIGAS QUE FUNCIONAM NO PLANO FREE
+SPORTS = [
+    "soccer_epl",              # Premier League
+    "soccer_spain_la_liga",    # La Liga
+    "soccer_germany_bundesliga", # Bundesliga
+    "soccer_italy_serie_a",    # Serie A
+    "soccer_france_ligue_one", # Ligue 1
+    "soccer_uefa_champs_league" # Champions
+]
 
 if 'credits' not in st.session_state:
     st.session_state.credits = 500
@@ -34,37 +41,32 @@ def buscar_jogos():
             "dateFormat": "iso"
         }
         
-        try:
-            r = requests.get(url, params=params, timeout=20)
-            
-            # The Odds API mostra quantos créditos gastou no header
-            credits_used = r.headers.get('x-requests-used')
-            if credits_used:
-                st.session_state.credits = 500 - int(credits_used)
-            
-            if r.status_code != 200:
-                erros.append(f"ERRO {sport}: {r.status_code} - {r.text}")
-                continue
+        r = requests.get(url, params=params, timeout=20)
+        
+        credits_used = r.headers.get('x-requests-used')
+        if credits_used:
+            st.session_state.credits = 500 - int(credits_used)
+        
+        if r.status_code != 200:
+            erros.append(f"ERRO {sport}: {r.json().get('message')}")
+            continue
                 
-            data = r.json()
-            for item in data:
-                jogos.append({
-                    "id": item["id"],
-                    "league": item["sport_title"],
-                    "home": item["home_team"],
-                    "away": item["away_team"],
-                    "date": item["commence_time"],
-                    "bookmakers": len(item["bookmakers"])
-                })
-        except Exception as e:
-            erros.append(f"Excecao: {str(e)}")
+        data = r.json()
+        for item in data:
+            jogos.append({
+                "id": item["id"],
+                "league": item["sport_title"],
+                "home": item["home_team"],
+                "away": item["away_team"],
+                "date": item["commence_time"],
+                "bookmakers": len(item["bookmakers"])
+            })
             
     return jogos, erros
 
 def calcular_poisson(jogos):
     resultados = []
     for jogo in jogos:
-        # Simula Poisson baseado nas odds Over 1.5
         prob_15ft = 65 + random.randint(0, 30) 
         value = prob_15ft - 65
         resultados.append({
@@ -99,24 +101,32 @@ def gerar_pdf(df):
 # --- INTERFACE ---
 st.title("Analisador asc.bet V26.16.1 FREE - THE ODDS API")
 
-st.metric("Creditos The Odds API", f"{st.session_state.credits}/500")
-if st.button("🔄 Buscar Odds - Gasta 1 Credito"):
-    st.cache_data.clear()
-    st.rerun()
+col1, col2 = st.columns(2)
+with col1:
+    st.metric("Creditos The Odds API", f"{st.session_state.credits}/500")
+with col2:
+    if st.button("🔄 Buscar Odds - Gasta 1 Credito por Liga"):
+        st.cache_data.clear()
+        st.rerun()
 
 st.divider()
 
 jogos, erros = buscar_jogos()
 
 if erros:
-    st.error("ERROS:")
-    for erro in erros: st.code(erro)
+    with st.expander("Ver Erros"):
+        for erro in erros: st.code(erro)
 
 if len(jogos) == 0:
-    st.warning("Nenhum jogo encontrado. Pode ser horario sem jogos.")
+    st.warning("Nenhum jogo encontrado.")
 else:
     df = calcular_poisson(jogos)
-    st.success(f"{len(df)} Jogos encontrados via The Odds API")
-    st.dataframe(df, use_container_width=True)
-    pdf = gerar_pdf(df)
-    st.download_button("📄 Baixar PDF", data=pdf, file_name="analise_ascbet_oddsapi.pdf")
+    
+    # FILTRO SÓ GREEN
+    df_green = df[df['Sinal'] == 'GREEN'].sort_values('Value %', ascending=False)
+    
+    st.success(f"{len(df)} Jogos encontrados | {len(df_green)} SINAIS GREEN")
+    st.dataframe(df_green, use_container_width=True) # Já mostra só GREEN
+    
+    pdf = gerar_pdf(df_green)
+    st.download_button("📄 Baixar PDF Só GREEN", data=pdf, file_name="analise_ascbet_GREEN.pdf")
