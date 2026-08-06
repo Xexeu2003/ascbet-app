@@ -12,7 +12,7 @@ from reportlab.lib.units import cm
 from datetime import datetime, timedelta
 import pytz
 
-VERSAO = "V26.10.0"
+VERSAO = "V26.12.0"
 MARCA_DAGUA = "asc.bet"
 API_FOOTBALL_URL = "https://apiv3.apifootball.com/"
 API_FOOTBALL_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
@@ -20,13 +20,22 @@ API_FOOTBALL_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd
 ODDS_API_KEY = "cc7a0c9ee51e4bc96110d49730acaa"
 ODDS_API_URL = "https://api.the-odds-api.com/v4/sports"
 
+# MAPA DE LIGAS ATUALIZADO
 LIGAS_MAPA = {
-    198: {"nome": "ISLANDIA URVALSDEILD", "odds_key": "soccer_iceland_urvalsdeild"},
+    534: {"nome": "SUECIA ALLSVENSKAN", "odds_key": "soccer_sweden_allsvenskan"},
+    103: {"nome": "NORUEGA ELITESERIEN", "odds_key": "soccer_norway_eliteserien"},
+    522: {"nome": "FINLANDIA VEIKKAUSLIIGA", "odds_key": "soccer_finland_veikkausliiga"},
+    198: {"nome": "ISLANDIA BESTA DEILD", "odds_key": "soccer_iceland_urvalsdeild"},
+    337: {"nome": "ESTONIA MEISTRILIIGA", "odds_key": None}, # API Odds não tem
+    340: {"nome": "LETONIA VIRSLIGA", "odds_key": None},
+    341: {"nome": "LITUANIA A LYGA", "odds_key": None},
+    523: {"nome": "ILHAS FAROE BETRI DEILDIN", "odds_key": None},
+    175: {"nome": "IRLANDA LEAGUE OF IRELAND", "odds_key": "soccer_ireland_premier_league"},
 }
 
 st.set_page_config(page_title=f"Analisador asc.bet {VERSAO}", layout="wide")
-st.title(f"Analisador asc.bet {VERSAO} - TOP 20 + Poisson Completo")
-st.caption("Obs: API Free. Só Islândia 100% confiável hoje.")
+st.title(f"Analisador asc.bet {VERSAO} - TOP 20 + 9 Ligas")
+st.caption("Obs: API Free. Dados podem atrasar 15min. Odd só nas ligas com 'odds_key'")
 
 def poisson_prob(goals, lamb): return poisson.pmf(goals, lamb)
 def calc_prob_over(lamb, linha): return 1 - sum([poisson_prob(i, lamb) for i in range(int(linha))])
@@ -59,40 +68,44 @@ def gerar_pdf_buffer(df):
 
     for liga, grupo in df.groupby('Liga'):
         elementos.append(Paragraph(f"LIGA: {liga}", styles['LigaTitulo']))
-        colunas = ["Data", "Pos", "Casa", "Pos", "Fora", "Odd 1.5", "Prob 0.5HT", "Prob 1.5FT", "Prob 2.5FT", "BTTS", "Casa Vence", "Value"]
+        colunas = ["Data", "Pos", "Casa", "Pos", "Fora", "Odd 1.5", "Prob 0.5HT", "Prob 1.5FT", "Prob 2.5FT", "BTTS", "Casa", "Empate", "Fora", "Value"]
         dados_tabela = [colunas] + grupo[colunas].values.tolist()
-        larguras = [1.8*cm, 0.7*cm, 3.2*cm, 0.7*cm, 3.2*cm, 1.4*cm, 1.5*cm, 1.5*cm, 1.5*cm, 1.3*cm, 1.6*cm, 1.6*cm]
+        larguras = [1.6*cm, 0.6*cm, 2.8*cm, 0.6*cm, 2.8*cm, 1.3*cm, 1.4*cm, 1.4*cm, 1.4*cm, 1.2*cm, 1.2*cm, 1.2*cm, 1.2*cm, 1.4*cm]
         tabela = Table(dados_tabela, colWidths=larguras, repeatRows=1)
         estilo = TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1A365D")), ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'), ('FONTSIZE', (0,0), (-1,-1), 7),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'), ('FONTSIZE', (0,0), (-1,-1), 6.5),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E0")),
             ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor("#F7FAFC")])
         ])
 
         for i in range(1, len(dados_tabela)):
-            # Pinta 1.5FT
             cor_texto, cor_fundo = get_cor_prob(dados_tabela[i][7])
             estilo.add('TEXTCOLOR', (7, i), (7, i), cor_texto)
             estilo.add('FONTNAME', (7, i), (7, i), 'Helvetica-Bold')
             if cor_fundo!= colors.white: estilo.add('BACKGROUND', (7, i), (7, i), cor_fundo)
             
-            # Pinta BTTS e Casa Vence > 60%
-            for col in [9, 10]:
+            for col in [10, 11, 12]:
                 try:
-                    if float(dados_tabela[i][col].replace('%','')) > 60:
+                    if float(dados_tabela[i][col].replace('%','')) > 50:
                         estilo.add('BACKGROUND', (col, i), (col, i), colors.HexColor("#BFDBFE"))
+                        estilo.add('FONTNAME', (col, i), (col, i), 'Helvetica-Bold')
                 except: pass
 
-            # Pinta Value > 20%
             try:
-                if float(dados_tabela[i][11].replace('%','')) > 20:
-                    estilo.add('BACKGROUND', (11, i), (11, i), colors.HexColor("#A7F3D0"))
-                    estilo.add('FONTNAME', (11, i), (11, i), 'Helvetica-Bold')
+                if float(dados_tabela[i][13].replace('%','')) > 20:
+                    estilo.add('BACKGROUND', (13, i), (13, i), colors.HexColor("#A7F3D0"))
+                    estilo.add('FONTNAME', (13, i), (13, i), 'Helvetica-Bold')
             except: pass
         tabela.setStyle(estilo)
         elementos.append(tabela)
     doc.build(elementos, onFirstPage=adicionar_marca_dagua, onLaterPages=adicionar_marca_dagua)
+    buffer.seek(0)
+    return buffer
+
+def gerar_csv_buffer(df):
+    buffer = BytesIO()
+    df.to_csv(buffer, index=False, sep=';', encoding='utf-8-sig')
     buffer.seek(0)
     return buffer
 
@@ -119,7 +132,7 @@ def get_last_8_games(team_id):
 
 @st.cache_data(ttl=900)
 def get_odds_15(league_key, home_team, away_team):
-    if not league_key: return 1.85
+    if not league_key: return 1.85 # Usa odd padrão se não tiver na OddsAPI
     url = f"{ODDS_API_URL}/{league_key}/odds"
     params = {"apiKey": ODDS_API_KEY, "regions": "eu", "markets": "totals", "oddsFormat": "decimal"}
     try:
@@ -156,41 +169,45 @@ def calcular_prob_poisson(home_id, away_id, league_id, home_name, away_name, lea
     home_lambda = home_attack * away_defense * (league_avg / 2)
     away_lambda = away_attack * home_defense * (league_avg / 2)
     total_lambda = home_lambda + away_lambda
-    lambda_ht = total_lambda * 0.40 # 40% dos gols saem no 1º tempo
+    lambda_ht = total_lambda * 0.40
 
-    # PROBABILIDADES
     prob_05ht = calc_prob_over(lambda_ht, 0.5) * 100
     prob_15ft = calc_prob_over(total_lambda, 1.5) * 100
     prob_25ft = calc_prob_over(total_lambda, 2.5) * 100
-    
-    # NOVA: PROB AMBOS MARCAM = 1 - P(casa faz 0) - P(fora faz 0) + P(ambos fazem 0)
     prob_btts = (1 - poisson_prob(0, home_lambda)) * (1 - poisson_prob(0, away_lambda)) * 100
     
-    # NOVA: PROB CASA VENCE = Soma P(casa > fora)
-    prob_casa_vence = 0
+    prob_casa = 0
+    prob_empate = 0
+    prob_fora = 0
     for i in range(0, 6):
-        for j in range(0, i):
-            prob_casa_vence += poisson_prob(i, home_lambda) * poisson_prob(j, away_lambda)
-    prob_casa_vence *= 100
+        for j in range(0, 6):
+            p = poisson_prob(i, home_lambda) * poisson_prob(j, away_lambda)
+            if i > j: prob_casa += p
+            elif i == j: prob_empate += p
+            else: prob_fora += p
+    prob_casa *= 100
+    prob_empate *= 100
+    prob_fora *= 100
 
     odd_real = get_odds_15(league_key, home_name, away_name)
     value = (prob_15ft / 100) * odd_real - 1
     value_str = f"{value*100:.1f}%"
 
-    return f"{int(prob_05ht)}%", f"{int(prob_15ft)}%", f"{int(prob_25ft)}%", f"{int(prob_btts)}%", f"{int(prob_casa_vence)}%", home_pos, away_pos, f"{odd_real:.2f}", value_str
+    return f"{int(prob_05ht)}%", f"{int(prob_15ft)}%", f"{int(prob_25ft)}%", f"{int(prob_btts)}%", f"{int(prob_casa)}%", f"{int(prob_empate)}%", f"{int(prob_fora)}%", home_pos, away_pos, f"{odd_real:.2f}", value_str
 
 @st.cache_data(ttl=1800)
-def carregar_dados():
+def carregar_dados(ligas_selecionadas):
     todos_jogos = []
     tz_br = pytz.timezone('America/Manaus')
     hoje_br = datetime.now(tz_br)
     data_inicio = hoje_br.strftime("%Y-%m-%d")
     data_fim = (hoje_br + timedelta(days=5)).strftime("%Y-%m-%d")
 
-    st.info(f"Buscando jogos de {data_inicio} até {data_fim}")
+    st.info(f"Buscando jogos de {data_inicio} até {data_fim} em {len(ligas_selecionadas)} ligas")
 
     with st.spinner("Calculando Poisson Completo..."):
-        for league_id, info in LIGAS_MAPA.items():
+        for league_id in ligas_selecionadas:
+            info = LIGAS_MAPA[league_id]
             nome_liga = info["nome"]
             league_key = info["odds_key"]
             params = {"action": "get_events", "league_id": league_id, "from": data_inicio, "to": data_fim, "APIkey": API_FOOTBALL_KEY}
@@ -200,11 +217,10 @@ def carregar_dados():
             if isinstance(jogos, list):
                 for jogo in jogos:
                     if jogo['match_status']!= "": continue
-                    p05, p15, p25, btts, casa_vence, pos_home, pos_away, odd, value = calcular_prob_poisson(
+                    p05, p15, p25, btts, p_casa, p_empate, p_fora, pos_home, pos_away, odd, value = calcular_prob_poisson(
                         jogo['match_hometeam_id'], jogo['match_awayteam_id'], league_id,
                         jogo['match_hometeam_name'], jogo['match_awayteam_name'], league_key
                     )
-                    # FILTRO NOVO: VALUE > 20% E PROB 1.5FT > 80%
                     if float(value.replace('%','')) < 20 or int(p15.replace('%','')) < 80: continue
                     
                     todos_jogos.append({
@@ -212,17 +228,33 @@ def carregar_dados():
                         "Pos": pos_home, "Casa": jogo['match_hometeam_name'],
                         "Pos": pos_away, "Fora": jogo['match_awayteam_name'],
                         "Odd 1.5": odd, "Prob 0.5HT": p05, "Prob 1.5FT": p15, "Prob 2.5FT": p25,
-                        "BTTS": btts, "Casa Vence": casa_vence, "Value": value,
+                        "BTTS": btts, "Casa": p_casa, "Empate": p_empate, "Fora": p_fora, "Value": value,
                     })
     return pd.DataFrame(todos_jogos)
 
-df = carregar_dados()
+st.sidebar.header("Filtros")
+ligas_opcoes = {v["nome"]: k for k, v in LIGAS_MAPA.items()}
+ligas_selecionadas = st.sidebar.multiselect(
+    "Selecione as Ligas",
+    options=list(ligas_opcoes.keys()),
+    default=list(ligas_opcoes.keys())
+)
+
+ligas_ids = [ligas_opcoes[nome] for nome in ligas_selecionadas]
+df = carregar_dados(ligas_ids)
+
 if not df.empty:
     df['Prob 1.5FT Num'] = df['Prob 1.5FT'].str.replace('%','').astype(int)
     df = df.sort_values(by='Prob 1.5FT Num', ascending=False).head(20)
     df = df.drop(columns=['Prob 1.5FT Num'])
     st.dataframe(df, use_container_width=True)
-    pdf_buffer = gerar_pdf_buffer(df)
-    st.download_button("📥 Baixar PDF do Relatorio", data=pdf_buffer, file_name=f"Relatorio_Analisador_{VERSAO}_{datetime.now().strftime('%d%m%Y')}.pdf", mime="application/pdf", use_container_width=True)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        pdf_buffer = gerar_pdf_buffer(df)
+        st.download_button("📥 Baixar PDF", data=pdf_buffer, file_name=f"Relatorio_Analisador_{VERSAO}_{datetime.now().strftime('%d%m%Y')}.pdf", mime="application/pdf", use_container_width=True)
+    with col2:
+        csv_buffer = gerar_csv_buffer(df)
+        st.download_button("📊 Exportar CSV", data=csv_buffer, file_name=f"Relatorio_Analisador_{VERSAO}_{datetime.now().strftime('%d%m%Y')}.csv", mime="text/csv", use_container_width=True)
 else:
-    st.warning("Nenhum jogo com Value > 20% e Prob 1.5FT > 80% encontrado.")
+    st.warning("Nenhum jogo com Value > 20% e Prob 1.5FT > 80% encontrado nas ligas selecionadas.")
