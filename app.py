@@ -15,17 +15,18 @@ import time
 import os
 import json
 
-VERSAO = "V26.16.0"
+VERSAO = "V26.16.1 FREE"
 MARCA_DAGUA = "asc.bet"
 API_FOOTBALL_URL = "https://apiv3.apifootball.com/"
 API_FOOTBALL_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
 HISTORICO_FILE = "historico_ascbet.json"
+CREDITOS_FILE = "creditos_odds.json"
 
-ODDS_API_KEY = "cc7a0c9ee51e4bc96110d49730acaa"
+ODDS_API_KEY = "7779b153071a617ec6767463223c2eb1" # SUA KEY FREE
 ODDS_API_URL = "https://api.the-odds-api.com/v4/sports"
-REFRESH_MINUTOS = 120
+REFRESH_HORAS = 12 # CACHE DE 12 HORAS PRA ECONOMIZAR
 
-# LIGAS ESTÁVEIS 2026 - TESTADAS
+# 6 LIGAS ESTÁVEIS
 LIGAS_MAPA = {
     534: {"nome": "SUECIA ALLSVENSKAN", "odds_key": "soccer_sweden_allsvenskan", "pais": "Sweden"},
     103: {"nome": "NORUEGA ELITESERIEN", "odds_key": "soccer_norway_eliteserien", "pais": "Norway"},
@@ -36,28 +37,53 @@ LIGAS_MAPA = {
 }
 
 st.set_page_config(page_title=f"Analisador asc.bet {VERSAO}", layout="wide")
-st.title(f"Analisador asc.bet {VERSAO} - 6 Ligas Estáveis + Green/Red")
+st.title(f"Analisador asc.bet {VERSAO} - Modo FREE 500 creditos")
 
-# AUTO REFRESH
+# CONTROLE DE CREDITOS
+def carregar_creditos():
+    if os.path.exists(CREDITOS_FILE):
+        with open(CREDITOS_FILE, 'r') as f: return json.load(f)
+    return {"usados": 0, "mes": datetime.now().month}
+
+def salvar_creditos(dados):
+    with open(CREDITOS_FILE, 'w') as f: json.dump(dados, f)
+
+def gastar_credito(qtd):
+    dados = carregar_creditos()
+    mes_atual = datetime.now().month
+    if dados["mes"]!= mes_atual: # resetou o mes
+        dados = {"usados": 0, "mes": mes_atual}
+    dados["usados"] += qtd
+    salvar_creditos(dados)
+    return dados["usados"]
+
+creditos = carregar_creditos()
+restantes = 500 - creditos["usados"]
+st.sidebar.metric("Creditos Odds API", f"{restantes}/500")
+if restantes < 50: st.sidebar.error(f"ATENCAO: So restam {restantes} creditos este mes!")
+
+# AUTO REFRESH 12H
 if 'last_update' not in st.session_state:
-    st.session_state.last_update = time.time()
-if time.time() - st.session_state.last_update > REFRESH_MINUTOS * 60:
-    st.session_state.last_update = time.time()
-    st.rerun()
-tempo_restante = REFRESH_MINUTOS - int((time.time() - st.session_state.last_update) / 60)
-st.sidebar.info(f"Proxima atualizacao em: {tempo_restante}min")
-if st.sidebar.button("🔄 Forcar Atualizacao Agora"):
     st.session_state.last_update = 0
+if time.time() - st.session_state.last_update > REFRESH_HORAS * 3600:
+    st.session_state.last_update = time.time()
     st.rerun()
+tempo_restante = REFRESH_HORAS - int((time.time() - st.session_state.last_update) / 3600)
+st.sidebar.info(f"Proxima atualizacao em: {tempo_restante}h")
+if st.sidebar.button("🔄 Forcar Atualizacao -1 Credito"):
+    if restantes > 0:
+        st.session_state.last_update = 0
+        st.rerun()
+    else:
+        st.sidebar.error("Sem creditos. Aguarde proximo mes")
 
+# HISTORICO GREEN/RED
 def carregar_historico():
     if os.path.exists(HISTORICO_FILE):
         with open(HISTORICO_FILE, 'r', encoding='utf-8') as f: return json.load(f)
     return []
-
 def salvar_historico(historico):
     with open(HISTORICO_FILE, 'w', encoding='utf-8') as f: json.dump(historico, f)
-
 def atualizar_status_jogo(jogo_id, status):
     historico = carregar_historico()
     for j in historico:
@@ -66,22 +92,16 @@ def atualizar_status_jogo(jogo_id, status):
             j['data_result'] = datetime.now().strftime("%d/%m/%Y %H:%M")
     salvar_historico(historico)
     st.rerun()
-
 def atualizar_historico(df_novo):
     historico = carregar_historico()
     for _, row in df_novo.iterrows():
         jogo_id = f"{row['Casa']}_{row['Fora']}_{row['Data']}"
         if not any(j['id'] == jogo_id for j in historico):
-            historico.append({
-                "id": jogo_id, "data_prev": row['Data'], "liga": row['Liga'],
-                "casa": row['Casa'], "fora": row['Fora'], "prob_15": row['Prob 1.5FT'],
-                "value": row['Value'], "status": "pendente", "resultado": ""
-            })
+            historico.append({"id": jogo_id, "data_prev": row['Data'], "liga": row['Liga'], "casa": row['Casa'], "fora": row['Fora'], "prob_15": row['Prob 1.5FT'], "value": row['Value'], "status": "pendente", "resultado": ""})
     limite = (datetime.now() - timedelta(days=7)).strftime("%d/%m/%Y")
     historico = [j for j in historico if datetime.strptime(j['data_prev'], "%d/%m/%Y") >= datetime.strptime(limite, "%d/%m/%Y")]
     salvar_historico(historico)
     return historico
-
 def mostrar_historico():
     historico = carregar_historico()
     if not historico: return
@@ -89,26 +109,21 @@ def mostrar_historico():
     df_hist['ValueNum'] = df_hist['value'].str.replace('%','').astype(float)
     total = len(df_hist[df_hist['status']!= 'pendente'])
     greens = len(df_hist[df_hist['status'] == 'green'])
-    reds = len(df_hist[df_hist['status'] == 'red'])
     assertividade = (greens / total * 100) if total > 0 else 0
-    
     st.sidebar.subheader(f"📊 Assertividade 7 Dias")
     st.sidebar.metric("Taxa de Acerto", f"{assertividade:.1f}%")
     col1, col2 = st.sidebar.columns(2)
     col1.metric("Green", greens)
-    col2.metric("Red", reds)
-    
+    col2.metric("Red", total-greens)
     with st.sidebar.expander("Marcar Resultados Pendentes"):
         pendentes = [j for j in historico if j['status'] == 'pendente']
         if not pendentes: st.write("Nenhum jogo pendente")
         for jogo in pendentes[:8]:
             st.write(f"**{jogo['casa']} x {jogo['fora']}**")
-            st.caption(f"{jogo['liga']} | Value: {jogo['value']} | {jogo['data_prev']}")
+            st.caption(f"{jogo['liga']} | Value: {jogo['value']}")
             col1, col2 = st.columns(2)
-            if col1.button("✅ Green", key=f"g_{jogo['id']}"):
-                atualizar_status_jogo(jogo['id'], 'green')
-            if col2.button("❌ Red", key=f"r_{jogo['id']}"):
-                atualizar_status_jogo(jogo['id'], 'red')
+            if col1.button("✅ Green", key=f"g_{jogo['id']}"): atualizar_status_jogo(jogo['id'], 'green')
+            if col2.button("❌ Red", key=f"r_{jogo['id']}"): atualizar_status_jogo(jogo['id'], 'red')
 
 def poisson_prob(goals, lamb): return poisson.pmf(goals, lamb)
 def calc_prob_over(lamb, linha): return 1 - sum([poisson_prob(i, lamb) for i in range(int(linha))])
@@ -118,7 +133,6 @@ def get_cor_prob(prob_str):
     if valor >= 80: return colors.HexColor("#0F5132"), colors.HexColor("#D1E7DD")
     elif valor > 75: return colors.HexColor("#664D03"), colors.HexColor("#FFF3CD")
     else: return colors.black, colors.white
-
 def adicionar_marca_dagua(canvas, doc):
     canvas.saveState()
     canvas.setFont("Helvetica-Bold", 100)
@@ -126,7 +140,6 @@ def adicionar_marca_dagua(canvas, doc):
     canvas.setFillAlpha(0.05)
     canvas.drawCentredString(landscape(A4)[0] / 2.0, landscape(A4)[1] / 2.0, MARCA_DAGUA)
     canvas.restoreState()
-
 def gerar_pdf_buffer(df):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=0.5*cm, leftMargin=0.5*cm, topMargin=1.5*cm, bottomMargin=1.5*cm)
@@ -134,22 +147,14 @@ def gerar_pdf_buffer(df):
     styles.add(ParagraphStyle(name='Titulo', fontSize=18, alignment=1, fontName='Helvetica-Bold', textColor=colors.HexColor("#1A365D")))
     styles.add(ParagraphStyle(name='SubTitulo', fontSize=9, alignment=1, spaceAfter=12, textColor=colors.grey))
     styles.add(ParagraphStyle(name='LigaTitulo', fontSize=13, fontName='Helvetica-Bold', spaceBefore=12, spaceAfter=6, textColor=colors.HexColor("#2C5282")))
-
-    elementos = [Paragraph(f"Relatorio Analisador asc.bet {VERSAO} - TOP 10", styles['Titulo']),
-                 Paragraph(f"Gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')}", styles['SubTitulo'])]
-
+    elementos = [Paragraph(f"Relatorio Analisador asc.bet {VERSAO} - TOP 10", styles['Titulo']), Paragraph(f"Gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')}", styles['SubTitulo'])]
     for liga, grupo in df.groupby('Liga'):
         elementos.append(Paragraph(f"LIGA: {liga}", styles['LigaTitulo']))
         colunas = ["Data", "PosCasa", "Casa", "PosFora", "Fora", "Odd 1.5", "Prob 0.5HT", "Prob 1.5FT", "Prob 2.5FT", "BTTS", "ProbCasa", "ProbEmpate", "ProbFora", "Value"]
         dados_tabela = [colunas] + grupo[colunas].values.tolist()
         larguras = [1.6*cm, 0.9*cm, 2.5*cm, 0.9*cm, 2.5*cm, 1.3*cm, 1.4*cm, 1.4*cm, 1.4*cm, 1.2*cm, 1.2*cm, 1.2*cm, 1.2*cm, 1.4*cm]
         tabela = Table(dados_tabela, colWidths=larguras, repeatRows=1)
-        estilo = TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1A365D")), ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'), ('FONTSIZE', (0,0), (-1,-1), 6.5),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E0")),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor("#F7FAFC")])
-        ])
+        estilo = TableStyle([('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1A365D")), ('TEXTCOLOR', (0, 0), (-1, 0), colors.white), ('ALIGN', (0, 0), (-1, -1), 'CENTER'), ('FONTSIZE', (0,0), (-1,-1), 6.5), ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E0")), ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor("#F7FAFC")])])
         for i in range(1, len(dados_tabela)):
             cor_texto, cor_fundo = get_cor_prob(dados_tabela[i][7])
             estilo.add('TEXTCOLOR', (7, i), (7, i), cor_texto)
@@ -172,7 +177,7 @@ def gerar_pdf_buffer(df):
     buffer.seek(0)
     return buffer
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=43200) # 12 HORAS
 def get_standings(league_id):
     params = {"action": "get_standings", "league_id": league_id, "APIkey": API_FOOTBALL_KEY}
     try:
@@ -185,7 +190,7 @@ def get_standings(league_id):
         return pos_dict, avg
     except: return {}, 2.5
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=43200)
 def get_last_8_games(team_id):
     params = {"action": "get_events", "team_id": team_id, "APIkey": API_FOOTBALL_KEY}
     try:
@@ -193,13 +198,14 @@ def get_last_8_games(team_id):
         return data[-8:] if isinstance(data, list) else []
     except: return []
 
-@st.cache_data(ttl=900)
+@st.cache_data(ttl=43200) # 12 HORAS = GASTA 1 CREDITO A CADA 12H
 def get_odds_15(league_key, home_team, away_team):
-    if not league_key: return 1.85
+    if not league_key or restantes <= 0: return 1.85
     url = f"{ODDS_API_URL}/{league_key}/odds"
     params = {"apiKey": ODDS_API_KEY, "regions": "eu", "markets": "totals", "oddsFormat": "decimal"}
     try:
         r = requests.get(url, params=params, timeout=5).json()
+        gastar_credito(1) # GASTOU 1 CREDITO
         for game in r:
             if home_team.lower()[:4] in game['home_team'].lower() and away_team.lower()[:4] in game['away_team'].lower():
                 for book in game['bookmakers']:
@@ -245,14 +251,14 @@ def calcular_prob_poisson(home_id, away_id, league_id, home_name, away_name, lea
     value = (prob_15ft / 100) * odd_real - 1
     return f"{int(prob_05ht)}%", f"{int(prob_15ft)}%", f"{int(prob_25ft)}%", f"{int(prob_btts)}%", f"{int(prob_casa)}%", f"{int(prob_empate)}%", f"{int(prob_fora)}%", home_pos, away_pos, f"{odd_real:.2f}", f"{value*100:.1f}%"
 
-@st.cache_data(ttl=1800)
+@st.cache_data(ttl=43200)
 def carregar_dados(ligas_selecionadas, filtro_value, filtro_prob, mostrar_todos):
     todos_jogos = []
     tz_br = pytz.timezone('America/Manaus')
     hoje_br = datetime.now(tz_br)
     data_inicio = hoje_br.strftime("%Y-%m-%d")
     data_fim = (hoje_br + timedelta(days=14)).strftime("%Y-%m-%d")
-    st.info(f"Buscando jogos de {data_inicio} até {data_fim} em {len(ligas_selecionadas)} ligas")
+    st.info(f"Buscando jogos de {data_inicio} até {data_fim} | Cache 12h ativo")
     
     jogos_por_liga = {}
     with st.spinner("Calculando Poisson Completo..."):
@@ -269,9 +275,7 @@ def carregar_dados(ligas_selecionadas, filtro_value, filtro_prob, mostrar_todos)
             if isinstance(jogos, list):
                 for jogo in jogos:
                     pais_api = jogo.get('country_name', '')
-                    # TRAVA LIGA PELO PAIS
-                    if pais_api!= pais_liga:
-                        continue 
+                    if pais_api!= pais_liga: continue 
                     if jogo['match_status'] not in ["", "Not Started", "NS"]: continue
                     
                     p05, p15, p25, btts, p_casa, p_empate, p_fora, pos_home, pos_away, odd, value = calcular_prob_poisson(
@@ -293,13 +297,11 @@ def carregar_dados(ligas_selecionadas, filtro_value, filtro_prob, mostrar_todos)
                     })
     
     with st.expander("📊 Jogos encontrados por Liga"):
-        for liga, qtd in jogos_por_liga.items():
-            st.write(f"{liga}: {qtd} jogos")
+        for liga, qtd in jogos_por_liga.items(): st.write(f"{liga}: {qtd} jogos")
     
     return pd.DataFrame(todos_jogos)
 
 mostrar_historico()
-
 st.sidebar.header("Filtros")
 ligas_opcoes = {v["nome"]: k for k, v in LIGAS_MAPA.items()}
 ligas_selecionadas = st.sidebar.multiselect("Selecione as Ligas", options=list(ligas_opcoes.keys()), default=list(ligas_opcoes.keys()))
@@ -326,4 +328,4 @@ if not df.empty:
     with col2:
         st.info("Use a sidebar para marcar Green/Red dos jogos")
 else:
-    st.warning("Nenhum jogo encontrado. Aguarde atualizacao da API as 18h horario Manaus")
+    st.warning("Nenhum jogo encontrado. API atualiza 18h horario Manaus")
