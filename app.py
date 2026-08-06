@@ -15,7 +15,7 @@ import time
 import os
 import json
 
-VERSAO = "V26.14.0"
+VERSAO = "V26.14.1"
 MARCA_DAGUA = "asc.bet"
 API_FOOTBALL_URL = "https://apiv3.apifootball.com/"
 API_FOOTBALL_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
@@ -71,7 +71,6 @@ def atualizar_historico(df_novo):
                 "casa": row['Casa'], "fora": row['Fora'], "prob_15": row['Prob 1.5FT'],
                 "value": row['Value'], "status": "pendente", "resultado": ""
             })
-    # Limpar jogos +7 dias
     limite = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
     historico = [j for j in historico if j['data_prev'] >= limite]
     salvar_historico(historico)
@@ -149,7 +148,7 @@ def gerar_pdf_buffer(df):
                 if float(dados_tabela[i][13].replace('%','')) > 20:
                     estilo.add('BACKGROUND', (13, i), (13, i), colors.HexColor("#A7F3D0"))
                     estilo.add('FONTNAME', (13, i), (13, i), 'Helvetica-Bold')
-                except: pass
+            except: pass # CORRIGIDO: tirei o try solto
         tabela.setStyle(estilo)
         elementos.append(tabela)
     doc.build(elementos, onFirstPage=adicionar_marca_dagua, onLaterPages=adicionar_marca_dagua)
@@ -278,7 +277,7 @@ ligas_ids = [ligas_opcoes[nome] for nome in ligas_selecionadas]
 df = carregar_dados(ligas_ids, filtro_value, filtro_prob, mostrar_todos)
 
 if not df.empty:
-    atualizar_historico(df) # Salva no historico
+    atualizar_historico(df)
     top3 = df[df['ValueNum'] > 40].sort_values(by='ValueNum', ascending=False).head(3)
     if not top3.empty:
         top3_text = " | ".join([f"{row['Casa']} x {row['Fora']} - {row['Value']}" for _, row in top3.iterrows()])
