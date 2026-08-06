@@ -15,7 +15,7 @@ import time
 import os
 import json
 
-VERSAO = "V26.15.1"
+VERSAO = "V26.16.0"
 MARCA_DAGUA = "asc.bet"
 API_FOOTBALL_URL = "https://apiv3.apifootball.com/"
 API_FOOTBALL_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
@@ -25,21 +25,18 @@ ODDS_API_KEY = "cc7a0c9ee51e4bc96110d49730acaa"
 ODDS_API_URL = "https://api.the-odds-api.com/v4/sports"
 REFRESH_MINUTOS = 120
 
-# LIGAS CORRIGIDAS - IDs TESTADOS 2026
+# LIGAS ESTÁVEIS 2026 - TESTADAS
 LIGAS_MAPA = {
     534: {"nome": "SUECIA ALLSVENSKAN", "odds_key": "soccer_sweden_allsvenskan", "pais": "Sweden"},
     103: {"nome": "NORUEGA ELITESERIEN", "odds_key": "soccer_norway_eliteserien", "pais": "Norway"},
-    522: {"nome": "FINLANDIA VEIKKAUSLIIGA", "odds_key": "soccer_finland_veikkausliiga", "pais": "Finland"},
     198: {"nome": "ISLANDIA BESTA DEILD", "odds_key": "soccer_iceland_urvalsdeild", "pais": "Iceland"},
-    337: {"nome": "ESTONIA MEISTRILIIGA", "odds_key": None, "pais": "Estonia"},
-    340: {"nome": "LETONIA VIRSLIGA", "odds_key": None, "pais": "Latvia"},
-    341: {"nome": "LITUANIA A LYGA", "odds_key": None, "pais": "Lithuania"},
-    523: {"nome": "ILHAS FAROE BETRI DEILDIN", "odds_key": None, "pais": "Faroe Islands"},
-    175: {"nome": "IRLANDA LEAGUE OF IRELAND", "odds_key": "soccer_ireland_premier_league", "pais": "Ireland"},
+    175: {"nome": "IRLANDA PREMIER DIVISION", "odds_key": "soccer_ireland_premier_league", "pais": "Ireland"},
+    207: {"nome": "AUSTRIA BUNDESLIGA", "odds_key": "soccer_austria_bundesliga", "pais": "Austria"},
+    331: {"nome": "CHINA SUPER LEAGUE", "odds_key": "soccer_china_superleague", "pais": "China"},
 }
 
 st.set_page_config(page_title=f"Analisador asc.bet {VERSAO}", layout="wide")
-st.title(f"Analisador asc.bet {VERSAO} - TOP 10 + Trava Liga + Green/Red")
+st.title(f"Analisador asc.bet {VERSAO} - 6 Ligas Estáveis + Green/Red")
 
 # AUTO REFRESH
 if 'last_update' not in st.session_state:
@@ -104,7 +101,7 @@ def mostrar_historico():
     with st.sidebar.expander("Marcar Resultados Pendentes"):
         pendentes = [j for j in historico if j['status'] == 'pendente']
         if not pendentes: st.write("Nenhum jogo pendente")
-        for jogo in pendentes[:8]: # Mostra até 8
+        for jogo in pendentes[:8]:
             st.write(f"**{jogo['casa']} x {jogo['fora']}**")
             st.caption(f"{jogo['liga']} | Value: {jogo['value']} | {jogo['data_prev']}")
             col1, col2 = st.columns(2)
@@ -262,6 +259,7 @@ def carregar_dados(ligas_selecionadas, filtro_value, filtro_prob, mostrar_todos)
         for league_id in ligas_selecionadas:
             info = LIGAS_MAPA[league_id]
             nome_liga = info["nome"]
+            pais_liga = info["pais"]
             league_key = info["odds_key"]
             params = {"action": "get_events", "league_id": league_id, "from": data_inicio, "to": data_fim, "APIkey": API_FOOTBALL_KEY}
             r = requests.get(API_FOOTBALL_URL, params=params, timeout=15)
@@ -270,8 +268,9 @@ def carregar_dados(ligas_selecionadas, filtro_value, filtro_prob, mostrar_todos)
             
             if isinstance(jogos, list):
                 for jogo in jogos:
-                    # TRAVA LIGA V2: Confere pelo league_id. Funciona na API Free
-                    if int(jogo.get('league_id', 0))!= league_id:
+                    pais_api = jogo.get('country_name', '')
+                    # TRAVA LIGA PELO PAIS
+                    if pais_api!= pais_liga:
                         continue 
                     if jogo['match_status'] not in ["", "Not Started", "NS"]: continue
                     
@@ -293,7 +292,6 @@ def carregar_dados(ligas_selecionadas, filtro_value, filtro_prob, mostrar_todos)
                         "ValueNum": val_num, "ProbNum": prob_num
                     })
     
-    # Mostra quantos jogos achou por liga
     with st.expander("📊 Jogos encontrados por Liga"):
         for liga, qtd in jogos_por_liga.items():
             st.write(f"{liga}: {qtd} jogos")
@@ -328,4 +326,4 @@ if not df.empty:
     with col2:
         st.info("Use a sidebar para marcar Green/Red dos jogos")
 else:
-    st.warning("Nenhum jogo encontrado. Tente desmarcar ligas ou aguardar atualizacao da API as 18h")
+    st.warning("Nenhum jogo encontrado. Aguarde atualizacao da API as 18h horario Manaus")
