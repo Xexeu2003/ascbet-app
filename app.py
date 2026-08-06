@@ -12,7 +12,7 @@ from reportlab.lib.units import cm
 from datetime import datetime, timedelta
 import pytz
 
-VERSAO = "V26.8.0"
+VERSAO = "V26.9.0"
 MARCA_DAGUA = "asc.bet"
 API_FOOTBALL_URL = "https://apiv3.apifootball.com/"
 API_FOOTBALL_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
@@ -20,17 +20,13 @@ API_FOOTBALL_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd
 ODDS_API_KEY = "cc7a0c9ee51e4bc96110d49730acaa"
 ODDS_API_URL = "https://api.the-odds-api.com/v4/sports"
 
-# LIGAS TESTADAS E FUNCIONANDO
 LIGAS_MAPA = {
-    198: {"nome": "ISLANDIA URVALSDEILD", "odds_key": "soccer_iceland_urvalsdeild"}, # CORRIGIDO
-    142: {"nome": "FINLANDIA VEIKKAUSLIIGA", "odds_key": "soccer_finland_veikkausliiga"},
-    244: {"nome": "USA MLS", "odds_key": "soccer_usa_mls"},
-    320: {"nome": "COREIA DO SUL K LEAGUE 1", "odds_key": "soccer_korea_kleague1"},
-    201: {"nome": "JAPAO J1 LEAGUE", "odds_key": "soccer_japan_jleague"},
+    198: {"nome": "ISLANDIA URVALSDEILD", "odds_key": "soccer_iceland_urvalsdeild"},
 }
 
 st.set_page_config(page_title=f"Analisador asc.bet {VERSAO}", layout="wide")
-st.title(f"Analisador asc.bet {VERSAO} - TOP 20 + Value Real")
+st.title(f"Analisador asc.bet {VERSAO} - TOP 20 + Poisson Completo")
+st.caption("Obs: API Free. Só Islândia 100% confiável hoje.")
 
 def poisson_prob(goals, lamb): return poisson.pmf(goals, lamb)
 def calc_prob_over(lamb, linha): return 1 - sum([poisson_prob(i, lamb) for i in range(int(linha))])
@@ -52,7 +48,7 @@ def adicionar_marca_dagua(canvas, doc):
 
 def gerar_pdf_buffer(df):
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=0.8*cm, leftMargin=0.8*cm, topMargin=1.5*cm, bottomMargin=1.5*cm)
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=0.5*cm, leftMargin=0.5*cm, topMargin=1.5*cm, bottomMargin=1.5*cm)
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name='Titulo', fontSize=18, alignment=1, fontName='Helvetica-Bold', textColor=colors.HexColor("#1A365D")))
     styles.add(ParagraphStyle(name='SubTitulo', fontSize=9, alignment=1, spaceAfter=12, textColor=colors.grey))
@@ -63,26 +59,29 @@ def gerar_pdf_buffer(df):
 
     for liga, grupo in df.groupby('Liga'):
         elementos.append(Paragraph(f"LIGA: {liga}", styles['LigaTitulo']))
-        colunas = ["Data", "Pos", "Casa", "Pos", "Fora", "Odd 1.5", "Prob 1.5FT", "Value"]
+        colunas = ["Data", "Pos", "Casa", "Pos", "Fora", "Odd 1.5", "Prob 0.5HT", "Prob 1.5FT", "Prob 2.5FT", "Value"]
         dados_tabela = [colunas] + grupo[colunas].values.tolist()
-        larguras = [2.2*cm, 1*cm, 4.5*cm, 1*cm, 4.5*cm, 1.8*cm, 2.2*cm, 2*cm]
+        larguras = [2*cm, 0.8*cm, 3.8*cm, 0.8*cm, 3.8*cm, 1.5*cm, 1.8*cm, 1.8*cm, 1.8*cm, 1.8*cm]
         tabela = Table(dados_tabela, colWidths=larguras, repeatRows=1)
         estilo = TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1A365D")), ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'), ('FONTSIZE', (0,0), (-1,-1), 8),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'), ('FONTSIZE', (0,0), (-1,-1), 7.5),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E0")),
             ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor("#F7FAFC")])
         ])
 
         for i in range(1, len(dados_tabela)):
-            cor_texto, cor_fundo = get_cor_prob(dados_tabela[i][6])
-            estilo.add('TEXTCOLOR', (6, i), (6, i), cor_texto)
-            estilo.add('FONTNAME', (6, i), (6, i), 'Helvetica-Bold')
-            if cor_fundo!= colors.white: estilo.add('BACKGROUND', (6, i), (6, i), cor_fundo)
+            # Pinta 1.5FT
+            cor_texto, cor_fundo = get_cor_prob(dados_tabela[i][7])
+            estilo.add('TEXTCOLOR', (7, i), (7, i), cor_texto)
+            estilo.add('FONTNAME', (7, i), (7, i), 'Helvetica-Bold')
+            if cor_fundo!= colors.white: estilo.add('BACKGROUND', (7, i), (7, i), cor_fundo)
+            
+            # Pinta Value > 20%
             try:
-                if float(dados_tabela[i][7].replace('%','')) > 5:
-                    estilo.add('BACKGROUND', (7, i), (7, i), colors.HexColor("#A7F3D0"))
-                    estilo.add('FONTNAME', (7, i), (7, i), 'Helvetica-Bold')
+                if float(dados_tabela[i][9].replace('%','')) > 20:
+                    estilo.add('BACKGROUND', (9, i), (9, i), colors.HexColor("#A7F3D0"))
+                    estilo.add('FONTNAME', (9, i), (9, i), 'Helvetica-Bold')
             except: pass
         tabela.setStyle(estilo)
         elementos.append(tabela)
@@ -115,7 +114,7 @@ def get_last_8_games(team_id):
 def get_odds_15(league_key, home_team, away_team):
     if not league_key: return 1.85
     url = f"{ODDS_API_URL}/{league_key}/odds"
-    params = {"apiKey": ODDS_API_KEY, "regions": "us", "markets": "totals", "oddsFormat": "decimal"} # Mudei pra US
+    params = {"apiKey": ODDS_API_KEY, "regions": "eu", "markets": "totals", "oddsFormat": "decimal"}
     try:
         r = requests.get(url, params=params, timeout=5).json()
         for game in r:
@@ -150,13 +149,17 @@ def calcular_prob_poisson(home_id, away_id, league_id, home_name, away_name, lea
     home_lambda = home_attack * away_defense * (league_avg / 2)
     away_lambda = away_attack * home_defense * (league_avg / 2)
     total_lambda = home_lambda + away_lambda
+    lambda_ht = total_lambda * 0.45 # 45% dos gols saem no 1º tempo
 
+    prob_05ht = calc_prob_over(lambda_ht, 0.5) * 100
     prob_15ft = calc_prob_over(total_lambda, 1.5) * 100
+    prob_25ft = calc_prob_over(total_lambda, 2.5) * 100
+    
     odd_real = get_odds_15(league_key, home_name, away_name)
     value = (prob_15ft / 100) * odd_real - 1
     value_str = f"{value*100:.1f}%"
 
-    return f"{int(prob_15ft)}%", home_pos, away_pos, f"{odd_real:.2f}", value_str
+    return f"{int(prob_05ht)}%", f"{int(prob_15ft)}%", f"{int(prob_25ft)}%", home_pos, away_pos, f"{odd_real:.2f}", value_str
 
 @st.cache_data(ttl=1800)
 def carregar_dados():
@@ -168,7 +171,7 @@ def carregar_dados():
 
     st.info(f"Buscando jogos de {data_inicio} até {data_fim}")
 
-    with st.spinner("Calculando Poisson + Odds Reais + Tabela..."):
+    with st.spinner("Calculando Poisson 0.5HT + 1.5FT + 2.5FT..."):
         for league_id, info in LIGAS_MAPA.items():
             nome_liga = info["nome"]
             league_key = info["odds_key"]
@@ -176,26 +179,20 @@ def carregar_dados():
             r = requests.get(API_FOOTBALL_URL, params=params, timeout=15)
             jogos = r.json()
 
-            if isinstance(jogos, dict) and 'message' in jogos:
-                st.warning(f"Erro na liga {nome_liga}: {jogos['message']}")
-                continue
-
             if isinstance(jogos, list):
                 for jogo in jogos:
                     if jogo['match_status']!= "": continue
-                    # FILTRO ANTI-LIXO: Confere se o nome da liga bate
-                    if nome_liga == "USA MLS" and "United" not in jogo['match_hometeam_name'] and "FC" not in jogo['match_hometeam_name']:
-                        continue
-                    
-                    p15, pos_home, pos_away, odd, value = calcular_prob_poisson(
+                    p05, p15, p25, pos_home, pos_away, odd, value = calcular_prob_poisson(
                         jogo['match_hometeam_id'], jogo['match_awayteam_id'], league_id,
                         jogo['match_hometeam_name'], jogo['match_awayteam_name'], league_key
                     )
+                    if float(value.replace('%','')) < 20: continue # FILTRO VALUE
+                    
                     todos_jogos.append({
                         "Liga": nome_liga, "Data": datetime.strptime(jogo['match_date'], "%Y-%m-%d").strftime("%d/%m/%Y"),
                         "Pos": pos_home, "Casa": jogo['match_hometeam_name'],
                         "Pos": pos_away, "Fora": jogo['match_awayteam_name'],
-                        "Odd 1.5": odd, "Prob 1.5FT": p15, "Value": value,
+                        "Odd 1.5": odd, "Prob 0.5HT": p05, "Prob 1.5FT": p15, "Prob 2.5FT": p25, "Value": value,
                     })
     return pd.DataFrame(todos_jogos)
 
@@ -208,4 +205,4 @@ if not df.empty:
     pdf_buffer = gerar_pdf_buffer(df)
     st.download_button("📥 Baixar PDF do Relatorio", data=pdf_buffer, file_name=f"Relatorio_Analisador_{VERSAO}_{datetime.now().strftime('%d%m%Y')}.pdf", mime="application/pdf", use_container_width=True)
 else:
-    st.error("Nenhum jogo encontrado.")
+    st.warning("Nenhum jogo com Value > 20% encontrado na Islândia.")
