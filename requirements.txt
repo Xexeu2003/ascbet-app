@@ -1,5 +1,3 @@
 streamlit
 pandas
-requests
-scipy
-fpdf2
+reportlab
