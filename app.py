@@ -10,27 +10,22 @@ from reportlab.lib.pagesizes import A4
 st.set_page_config(page_title="Analisador asc.bet FREE", layout="wide")
 
 # --- CONFIG ---
-API_FOOTBALL_KEY = st.secrets.get("API_FOOTBALL_KEY", "SUA_CHAVE_AQUI")
+API_FOOTBALL_KEY = st.secrets.get("API_FOOTBALL_KEY")
 
-# LIGAS QUE SEMPRE TEM JOGO
-LEAGUES = [
-    71,   # Brasil Serie A 
-    39,   # Inglaterra Premier League
-    140,  # Espanha La Liga
-    135,  # Itália Serie A
-    78    # Alemanha Bundesliga
-]
+# TESTE COM 1 LIGA SÓ PRA GASTAR MENOS REQ
+LEAGUES = [71] # Brasil Serie A
 
 if 'credits' not in st.session_state:
     st.session_state.credits = 500
 
 # --- FUNCOES ---
-@st.cache_data(ttl=43200, show_spinner="Buscando jogos na API...") # Cache 12h
+@st.cache_data(ttl=300, show_spinner="Batendo na API...") # Cache 5min pra teste
 def buscar_jogos():
+    if not API_FOOTBALL_KEY:
+        return [], ["ERRO: API_FOOTBALL_KEY não encontrada no Secrets"]
+        
     tz_br = pytz.timezone("America/Manaus")
     hoje_br = datetime.now(tz_br)
-    
-    # BUSCAR 7 DIAS PRA TRÁS PRA TESTE
     data_inicio = (hoje_br - timedelta(days=7)).strftime("%Y-%m-%d")
     data_fim = hoje_br.strftime("%Y-%m-%d")
     
@@ -44,16 +39,14 @@ def buscar_jogos():
         
         try:
             r = requests.get(url, headers=headers, params=params, timeout=20)
-            
-            if r.status_code != 200:
-                erros.append(f"Liga {league}: Erro {r.status_code} - {r.text}")
-                continue
-                
             data = r.json()
+            
+            # MOSTRA O ERRO REAL DA API
             if data.get("errors"):
-                erros.append(f"Liga {league}: {data['errors']}")
-                continue
-
+                erros.append(f"API ERRO: {data['errors']}")
+            if r.status_code!= 200:
+                erros.append(f"HTTP {r.status_code}: {r.text}")
+                
             for item in data.get("response", []):
                 jogos.append({
                     "id": item["fixture"]["id"],
@@ -64,7 +57,7 @@ def buscar_jogos():
                     "status": item["fixture"]["status"]["short"]
                 })
         except Exception as e:
-            erros.append(f"Liga {league}: {str(e)}")
+            erros.append(f"Excecao: {str(e)}")
             
     return jogos, erros
 
@@ -73,7 +66,6 @@ def calcular_poisson(jogos):
     for jogo in jogos:
         prob_15ft = 70 + (hash(jogo["id"]) % 20)
         value = prob_15ft - 65
-        
         resultados.append({
             "Liga": jogo["league"],
             "Jogo": f"{jogo['home']} x {jogo['away']}",
@@ -91,60 +83,42 @@ def gerar_pdf(df):
     width, height = A4
     c.setFont("Helvetica-Bold", 16)
     c.drawString(30, height - 40, "Analisador asc.bet - Relatorio FREE")
-    c.setFont("Helvetica", 10)
     y = height - 80
     for index, row in df.iterrows():
         if y < 100: 
             c.showPage()
             y = height - 40
         c.drawString(30, y, f"{row['Liga']} - {row['Jogo']}")
-        c.drawString(30, y-15, f"Status: {row['Status']} | Prob 1.5FT: {row['Prob 1.5FT %']}% | Value: {row['Value %']}% | Sinal: {row['Sinal']}")
         y -= 35
     c.save()
     buffer.seek(0)
     return buffer
 
 # --- INTERFACE ---
-st.title("Analisador asc.bet V26.16.1 FREE - Modo FREE 500 creditos")
+st.title("Analisador asc.bet V26.16.1 FREE - DEBUG")
 
-col1, col2 = st.columns([2,1])
-with col1:
-    st.info(f"Buscando jogos de 7 dias atras ate hoje | Cache 12h ativo")
-with col2:
-    st.metric("Creditos Odds API", f"{st.session_state.credits}/500")
-    if st.button("🔄 Forçar Atualizacao - 1 Credito"):
-        if st.session_state.credits > 0:
-            st.session_state.credits -= 1
-            st.cache_data.clear()
-            st.rerun()
-        else:
-            st.error("Sem creditos")
+st.metric("Creditos Odds API", f"{st.session_state.credits}/500")
+if st.button("🔄 Forçar Atualizacao - 1 Credito"):
+    if st.session_state.credits > 0:
+        st.session_state.credits -= 1
+        st.cache_data.clear()
+        st.rerun()
 
 st.divider()
 
 jogos, erros = buscar_jogos()
 
-# MOSTRA ERROS SE TIVER
+# MOSTRA ERROS SEMPRE
 if erros:
-    with st.expander("Ver Erros da API"):
-        for erro in erros:
-            st.error(erro)
+    st.error("ERROS ENCONTRADOS:")
+    for erro in erros:
+        st.code(erro)
 
 if len(jogos) == 0:
-    st.warning("Nenhum jogo encontrado. Verifica se a KEY da API-Football está correta em Secrets")
+    st.warning("Nenhum jogo encontrado.")
 else:
     df = calcular_poisson(jogos)
     st.success(f"{len(df)} Jogos encontrados")
-    
     st.dataframe(df, use_container_width=True)
-    
     pdf = gerar_pdf(df)
-    st.download_button(
-        label="📄 Baixar PDF dos Jogos",
-        data=pdf,
-        file_name="analise_ascbet.pdf",
-        mime="application/pdf"
-    )
-
-st.divider()
-st.caption("Modo FREE: Atualiza 2x ao dia. Cache de 12h para economizar creditos.")
+    st.download_button("📄 Baixar PDF", data=pdf, file_name="analise_ascbet.pdf")
