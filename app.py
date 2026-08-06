@@ -15,7 +15,7 @@ import time
 import os
 import json
 
-VERSAO = "V26.15.0"
+VERSAO = "V26.15.1"
 MARCA_DAGUA = "asc.bet"
 API_FOOTBALL_URL = "https://apiv3.apifootball.com/"
 API_FOOTBALL_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
@@ -103,9 +103,10 @@ def mostrar_historico():
     
     with st.sidebar.expander("Marcar Resultados Pendentes"):
         pendentes = [j for j in historico if j['status'] == 'pendente']
-        for jogo in pendentes[:5]: # Mostra só 5 pra não poluir
+        if not pendentes: st.write("Nenhum jogo pendente")
+        for jogo in pendentes[:8]: # Mostra até 8
             st.write(f"**{jogo['casa']} x {jogo['fora']}**")
-            st.caption(f"{jogo['liga']} | Value: {jogo['value']}")
+            st.caption(f"{jogo['liga']} | Value: {jogo['value']} | {jogo['data_prev']}")
             col1, col2 = st.columns(2)
             if col1.button("✅ Green", key=f"g_{jogo['id']}"):
                 atualizar_status_jogo(jogo['id'], 'green')
@@ -255,21 +256,25 @@ def carregar_dados(ligas_selecionadas, filtro_value, filtro_prob, mostrar_todos)
     data_inicio = hoje_br.strftime("%Y-%m-%d")
     data_fim = (hoje_br + timedelta(days=14)).strftime("%Y-%m-%d")
     st.info(f"Buscando jogos de {data_inicio} até {data_fim} em {len(ligas_selecionadas)} ligas")
+    
+    jogos_por_liga = {}
     with st.spinner("Calculando Poisson Completo..."):
         for league_id in ligas_selecionadas:
             info = LIGAS_MAPA[league_id]
             nome_liga = info["nome"]
-            pais_liga = info["pais"]
             league_key = info["odds_key"]
             params = {"action": "get_events", "league_id": league_id, "from": data_inicio, "to": data_fim, "APIkey": API_FOOTBALL_KEY}
             r = requests.get(API_FOOTBALL_URL, params=params, timeout=15)
             jogos = r.json()
+            jogos_por_liga[nome_liga] = 0
+            
             if isinstance(jogos, list):
                 for jogo in jogos:
-                    # TRAVA LIGA: Só aceita se o país do jogo = país da liga
-                    if jogo.get('country_name', '')!= pais_liga:
-                        continue
+                    # TRAVA LIGA V2: Confere pelo league_id. Funciona na API Free
+                    if int(jogo.get('league_id', 0))!= league_id:
+                        continue 
                     if jogo['match_status'] not in ["", "Not Started", "NS"]: continue
+                    
                     p05, p15, p25, btts, p_casa, p_empate, p_fora, pos_home, pos_away, odd, value = calcular_prob_poisson(
                         jogo['match_hometeam_id'], jogo['match_awayteam_id'], league_id,
                         jogo['match_hometeam_name'], jogo['match_awayteam_name'], league_key)
@@ -277,6 +282,8 @@ def carregar_dados(ligas_selecionadas, filtro_value, filtro_prob, mostrar_todos)
                     prob_num = int(p15.replace('%',''))
                     if not mostrar_todos:
                         if val_num < filtro_value and prob_num < filtro_prob: continue
+                    
+                    jogos_por_liga[nome_liga] += 1
                     todos_jogos.append({
                         "Liga": nome_liga, "Data": datetime.strptime(jogo['match_date'], "%Y-%m-%d").strftime("%d/%m/%Y"),
                         "PosCasa": pos_home, "Casa": jogo['match_hometeam_name'],
@@ -285,6 +292,12 @@ def carregar_dados(ligas_selecionadas, filtro_value, filtro_prob, mostrar_todos)
                         "BTTS": btts, "ProbCasa": p_casa, "ProbEmpate": p_empate, "ProbFora": p_fora, "Value": value,
                         "ValueNum": val_num, "ProbNum": prob_num
                     })
+    
+    # Mostra quantos jogos achou por liga
+    with st.expander("📊 Jogos encontrados por Liga"):
+        for liga, qtd in jogos_por_liga.items():
+            st.write(f"{liga}: {qtd} jogos")
+    
     return pd.DataFrame(todos_jogos)
 
 mostrar_historico()
@@ -293,18 +306,18 @@ st.sidebar.header("Filtros")
 ligas_opcoes = {v["nome"]: k for k, v in LIGAS_MAPA.items()}
 ligas_selecionadas = st.sidebar.multiselect("Selecione as Ligas", options=list(ligas_opcoes.keys()), default=list(ligas_opcoes.keys()))
 st.sidebar.subheader("Filtro de Qualidade")
-mostrar_todos = st.sidebar.checkbox("Mostrar todos os jogos", value=False)
-filtro_value = st.sidebar.slider("Value Minimo %", 0, 50, 10)
-filtro_prob = st.sidebar.slider("Prob 1.5FT Minima %", 60, 90, 75)
+mostrar_todos = st.sidebar.checkbox("Mostrar todos os jogos", value=True)
+filtro_value = st.sidebar.slider("Value Minimo %", 0, 50, 5)
+filtro_prob = st.sidebar.slider("Prob 1.5FT Minima %", 60, 90, 70)
 ligas_ids = [ligas_opcoes[nome] for nome in ligas_selecionadas]
 df = carregar_dados(ligas_ids, filtro_value, filtro_prob, mostrar_todos)
 
 if not df.empty:
     atualizar_historico(df)
-    top3 = df[df['ValueNum'] > 40].sort_values(by='ValueNum', ascending=False).head(3)
+    top3 = df[df['ValueNum'] > 30].sort_values(by='ValueNum', ascending=False).head(3)
     if not top3.empty:
         top3_text = " | ".join([f"{row['Casa']} x {row['Fora']} - {row['Value']}" for _, row in top3.iterrows()])
-        st.success(f"🔥 TOP 3 DO DIA - Value > 40%: {top3_text}")
+        st.success(f"🔥 TOP 3 DO DIA - Value > 30%: {top3_text}")
     df = df.sort_values(by='ProbNum', ascending=False).head(10)
     df_display = df.drop(columns=['ValueNum', 'ProbNum'])
     st.dataframe(df_display, use_container_width=True)
@@ -315,4 +328,4 @@ if not df.empty:
     with col2:
         st.info("Use a sidebar para marcar Green/Red dos jogos")
 else:
-    st.warning("Nenhum jogo encontrado. Marque 'Mostrar todos os jogos'")
+    st.warning("Nenhum jogo encontrado. Tente desmarcar ligas ou aguardar atualizacao da API as 18h")
