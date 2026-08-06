@@ -13,28 +13,23 @@ st.set_page_config(page_title="Analisador asc.bet FREE", layout="wide")
 
 ODDS_API_KEY = "7779b153071a617ec6767463223c2eb1"
 
-# LIGAS ATIVAS AGORA + EUROPA PRA TESTE
-SPORTS = [
-    # BRASIL - JA TA ROLANDO
-    "soccer_brazil_serie_a", 
-    "soccer_brazil_serie_b",
-    
-    # AMERICAS - JA TA ROLANDO  
-    "soccer_usa_mls",
-    "soccer_mexico_ligamx",
-    
-    # EUROPA VERÃO - JA TA ROLANDO
-    "soccer_sweden_allsvenskan",
-    "soccer_norway_eliteserien",
-    
-    # EUROPA - PRE TEMPORADA
-    "soccer_epl", 
-    "soccer_spain_la_liga", 
-    "soccer_germany_bundesliga",
-    "soccer_italy_serie_a", 
-    "soccer_france_ligue_one", 
-    "soccer_uefa_champs_league"
-]
+# TRADUÇÃO DAS LIGAS PRA FICAR BONITO NO PDF
+NOME_LIGAS = {
+    "soccer_brazil_serie_a": "BRASILEIRÃO SÉRIE A",
+    "soccer_brazil_serie_b": "BRASILEIRÃO SÉRIE B",
+    "soccer_usa_mls": "MLS - ESTADOS UNIDOS",
+    "soccer_mexico_ligamx": "LIGA MX - MÉXICO",
+    "soccer_sweden_allsvenskan": "ALLSVENSKAN - SUÉCIA",
+    "soccer_norway_eliteserien": "ELITESERIEN - NORUEGA",
+    "soccer_epl": "PREMIER LEAGUE - INGLATERRA",
+    "soccer_spain_la_liga": "LA LIGA - ESPANHA",
+    "soccer_germany_bundesliga": "BUNDESLIGA - ALEMANHA",
+    "soccer_italy_serie_a": "SÉRIE A - ITÁLIA",
+    "soccer_france_ligue_one": "LIGUE 1 - FRANÇA",
+    "soccer_uefa_champs_league": "CHAMPIONS LEAGUE"
+}
+
+SPORTS = list(NOME_LIGAS.keys())
 
 if 'credits' not in st.session_state:
     st.session_state.credits = 500
@@ -43,8 +38,8 @@ if 'credits' not in st.session_state:
 def buscar_jogos():
     jogos = []
     erros = []
-    for sport in SPORTS:
-        url = f"https://api.the-odds-api.com/v4/sports/{sport}/odds"
+    for sport_key in SPORTS:
+        url = f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds"
         params = {
             "apiKey": ODDS_API_KEY, 
             "regions": "eu", 
@@ -59,13 +54,14 @@ def buscar_jogos():
             st.session_state.credits = 500 - int(credits_used)
             
         if r.status_code != 200:
-            erros.append(f"{sport}: {r.json().get('message', 'Erro')}")
+            erros.append(f"{NOME_LIGAS[sport_key]}: {r.json().get('message', 'Erro')}")
             continue
                 
         for item in r.json():
             jogos.append({
                 "id": item["id"], 
-                "league": item["sport_title"],
+                "league_key": sport_key,
+                "league": NOME_LIGAS[sport_key], # NOME TRADUZIDO
                 "home": item["home_team"], 
                 "away": item["away_team"],
                 "date": item["commence_time"], 
@@ -107,7 +103,7 @@ def gerar_pdf(df):
     # TITULO
     c.setFont("Helvetica-Bold", 18)
     c.setFillColor(colors.HexColor("#0D47A1"))
-    c.drawCentredString(width / 2, y, f"Relatorio Analisador asc.bet V26.16.5 - AO VIVO")
+    c.drawCentredString(width / 2, y, f"Relatorio Analisador asc.bet V26.16.6 - AO VIVO")
     y -= 15
     c.setFont("Helvetica-Oblique", 8)
     c.setFillColor(colors.grey)
@@ -118,10 +114,12 @@ def gerar_pdf(df):
         df_liga = df[df['Liga'] == liga].sort_values('Value %', ascending=False).head(10)
         if len(df_liga) == 0: continue
         
-        # TITULO DA LIGA
-        c.setFont("Helvetica-Bold", 12)
-        c.setFillColor(colors.black)
-        c.drawString(30, y, f"LIGA: {liga.upper()}")
+        # FAIXA AZUL COM NOME DA LIGA - IGUAL AO ASC.BET
+        c.setFillColor(colors.HexColor("#1A237E"))
+        c.rect(20, y-15, width-40, 18, fill=1, stroke=0) # Retangulo azul
+        c.setFont("Helvetica-Bold", 11)
+        c.setFillColor(colors.white)
+        c.drawString(25, y-3, f"{liga}") # NOME DA LIGA AQUI
         y -= 20
         
         # TABELA
@@ -140,7 +138,7 @@ def gerar_pdf(df):
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1A237E")),
             ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
             ('ALIGN', (0,0), (-1,-1), 'CENTER'), 
-            ('ALIGN', (2,1), (2,-1), 'LEFT'),
+            ('ALIGN', (2,1), (2,-1), 'LEFT'), # Jogo esquerda
             ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'), 
             ('FONTSIZE', (0,0), (-1,0), 7),
             ('FONTSIZE', (0,1), (-1,-1), 7), 
@@ -162,13 +160,14 @@ def gerar_pdf(df):
     
     # RODAPÉ
     c.setFont("Helvetica-Oblique", 8)
+    c.setFillColor(colors.grey)
     c.drawString(30, 30, "Gerado por Analisador asc.bet FREE - The Odds API")
     c.save()
     buffer.seek(0)
     return buffer
 
 # --- INTERFACE ---
-st.title("Analisador asc.bet V26.16.5 AO VIVO")
+st.title("Analisador asc.bet V26.16.6 AO VIVO")
 col1, col2, col3 = st.columns(3)
 with col1: 
     st.metric("Creditos The Odds API", f"{st.session_state.credits}/500")
@@ -205,6 +204,6 @@ if len(jogos) > 0:
     
     if len(df) > 0:
         pdf = gerar_pdf(df)
-        st.download_button("📄 Baixar PDF AO VIVO", data=pdf, file_name="Relatorio_ascbet_AOVIVO.pdf", mime="application/pdf")
+        st.download_button("📄 Baixar PDF COM LIGA", data=pdf, file_name="Relatorio_ascbet_AOVIVO.pdf", mime="application/pdf")
 else:
     st.warning("Nenhum jogo encontrado. Tente novamente em 5 min.")
