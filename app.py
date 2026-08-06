@@ -11,14 +11,16 @@ from reportlab.lib import colors
 from reportlab.lib.units import cm
 from datetime import datetime, timedelta
 import pytz
+import time
 
-VERSAO = "V26.12.1"
+VERSAO = "V26.13.0"
 MARCA_DAGUA = "asc.bet"
 API_FOOTBALL_URL = "https://apiv3.apifootball.com/"
 API_FOOTBALL_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
 
 ODDS_API_KEY = "cc7a0c9ee51e4bc96110d49730acaa"
 ODDS_API_URL = "https://api.the-odds-api.com/v4/sports"
+REFRESH_MINUTOS = 120 # 2 horas
 
 LIGAS_MAPA = {
     534: {"nome": "SUECIA ALLSVENSKAN", "odds_key": "soccer_sweden_allsvenskan"},
@@ -33,8 +35,19 @@ LIGAS_MAPA = {
 }
 
 st.set_page_config(page_title=f"Analisador asc.bet {VERSAO}", layout="wide")
-st.title(f"Analisador asc.bet {VERSAO} - TOP 20 + 9 Ligas")
-st.caption("Obs: API Free. Dados podem atrasar 15min. Odd só nas ligas com 'odds_key'")
+st.title(f"Analisador asc.bet {VERSAO} - TOP 10 + 9 Ligas")
+st.caption(f"Obs: API Free. Auto-refresh a cada {REFRESH_MINUTOS}min. Odd só nas ligas com 'odds_key'")
+
+# AUTO REFRESH
+if 'last_update' not in st.session_state:
+    st.session_state.last_update = time.time()
+
+if time.time() - st.session_state.last_update > REFRESH_MINUTOS * 60:
+    st.session_state.last_update = time.time()
+    st.rerun()
+
+tempo_restante = REFRESH_MINUTOS - int((time.time() - st.session_state.last_update) / 60)
+st.sidebar.info(f"Proxima atualizacao em: {tempo_restante}min")
 
 def poisson_prob(goals, lamb): return poisson.pmf(goals, lamb)
 def calc_prob_over(lamb, linha): return 1 - sum([poisson_prob(i, lamb) for i in range(int(linha))])
@@ -62,7 +75,7 @@ def gerar_pdf_buffer(df):
     styles.add(ParagraphStyle(name='SubTitulo', fontSize=9, alignment=1, spaceAfter=12, textColor=colors.grey))
     styles.add(ParagraphStyle(name='LigaTitulo', fontSize=13, fontName='Helvetica-Bold', spaceBefore=12, spaceAfter=6, textColor=colors.HexColor("#2C5282")))
 
-    elementos = [Paragraph(f"Relatorio Analisador asc.bet {VERSAO} - TOP 20", styles['Titulo']),
+    elementos = [Paragraph(f"Relatorio Analisador asc.bet {VERSAO} - TOP 10", styles['Titulo']),
                  Paragraph(f"Gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')}", styles['SubTitulo'])]
 
     for liga, grupo in df.groupby('Liga'):
@@ -200,7 +213,7 @@ def carregar_dados(ligas_selecionadas, filtro_value, filtro_prob, mostrar_todos)
     tz_br = pytz.timezone('America/Manaus')
     hoje_br = datetime.now(tz_br)
     data_inicio = hoje_br.strftime("%Y-%m-%d")
-    data_fim = (hoje_br + timedelta(days=5)).strftime("%Y-%m-%d")
+    data_fim = (hoje_br + timedelta(days=14)).strftime("%Y-%m-%d") # 14 DIAS
 
     st.info(f"Buscando jogos de {data_inicio} até {data_fim} em {len(ligas_selecionadas)} ligas")
 
@@ -215,13 +228,12 @@ def carregar_dados(ligas_selecionadas, filtro_value, filtro_prob, mostrar_todos)
 
             if isinstance(jogos, list):
                 for jogo in jogos:
-                    if jogo['match_status']!= "": continue
+                    if jogo['match_status'] not in ["", "Not Started", "NS"]: continue # ACEITA MAIS STATUS
                     p05, p15, p25, btts, p_casa, p_empate, p_fora, pos_home, pos_away, odd, value = calcular_prob_poisson(
                         jogo['match_hometeam_id'], jogo['match_awayteam_id'], league_id,
                         jogo['match_hometeam_name'], jogo['match_awayteam_name'], league_key
                     )
                     
-                    # OPÇÃO 1 + 2: FILTRO COM SLIDER E BOTÃO MOSTRAR TODOS
                     val_num = float(value.replace('%',''))
                     prob_num = int(p15.replace('%',''))
                     
@@ -234,10 +246,10 @@ def carregar_dados(ligas_selecionadas, filtro_value, filtro_prob, mostrar_todos)
                         "Pos": pos_away, "Fora": jogo['match_awayteam_name'],
                         "Odd 1.5": odd, "Prob 0.5HT": p05, "Prob 1.5FT": p15, "Prob 2.5FT": p25,
                         "BTTS": btts, "Casa": p_casa, "Empate": p_empate, "Fora": p_fora, "Value": value,
+                        "ValueNum": val_num, "ProbNum": prob_num # PRA ORDENAR
                     })
     return pd.DataFrame(todos_jogos)
 
-# SIDEBAR COM FILTROS NOVOS
 st.sidebar.header("Filtros")
 ligas_opcoes = {v["nome"]: k for k, v in LIGAS_MAPA.items()}
 ligas_selecionadas = st.sidebar.multiselect(
@@ -246,19 +258,22 @@ ligas_selecionadas = st.sidebar.multiselect(
     default=list(ligas_opcoes.keys())
 )
 
-# OPÇÃO 2: SLIDER + BOTÃO
 st.sidebar.subheader("Filtro de Qualidade")
 mostrar_todos = st.sidebar.checkbox("Mostrar todos os jogos", value=False)
-filtro_value = st.sidebar.slider("Value Mínimo %", 0, 50, 10)
-filtro_prob = st.sidebar.slider("Prob 1.5FT Mínima %", 60, 90, 75)
+filtro_value = st.sidebar.slider("Value Minimo %", 0, 50, 10)
+filtro_prob = st.sidebar.slider("Prob 1.5FT Minima %", 60, 90, 75)
 
 ligas_ids = [ligas_opcoes[nome] for nome in ligas_selecionadas]
 df = carregar_dados(ligas_ids, filtro_value, filtro_prob, mostrar_todos)
 
 if not df.empty:
-    df['Prob 1.5FT Num'] = df['Prob 1.5FT'].str.replace('%','').astype(int)
-    df = df.sort_values(by='Prob 1.5FT Num', ascending=False).head(20)
-    df = df.drop(columns=['Prob 1.5FT Num'])
+    # BANNER TOP 3 DO DIA
+    top3 = df[df['ValueNum'] > 40].sort_values(by='ValueNum', ascending=False).head(3)
+    if not top3.empty:
+        st.success(f"🔥 TOP 3 DO DIA - Value > 40%: {top3[['Casa', 'Fora', 'Value']].to_string(index=False)}")
+
+    df = df.sort_values(by='ProbNum', ascending=False).head(10) # TOP 10
+    df = df.drop(columns=['ValueNum', 'ProbNum'])
     st.dataframe(df, use_container_width=True)
     
     col1, col2 = st.columns(2)
@@ -269,4 +284,4 @@ if not df.empty:
         csv_buffer = gerar_csv_buffer(df)
         st.download_button("📊 Exportar CSV", data=csv_buffer, file_name=f"Relatorio_Analisador_{VERSAO}_{datetime.now().strftime('%d%m%Y')}.csv", mime="text/csv", use_container_width=True)
 else:
-    st.warning(f"Nenhum jogo encontrado com Value > {filtro_value}% ou Prob 1.5FT > {filtro_prob}%. Marque 'Mostrar todos os jogos' pra ver tudo.")
+    st.warning(f"Nenhum jogo encontrado. Marque 'Mostrar todos os jogos' pra ver tudo.")
