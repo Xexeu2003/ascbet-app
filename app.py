@@ -12,7 +12,7 @@ from reportlab.lib.units import cm
 from datetime import datetime, timedelta
 import pytz
 
-VERSAO = "V26.7.7"
+VERSAO = "V26.7.8"
 MARCA_DAGUA = "asc.bet"
 API_FOOTBALL_URL = "https://apiv3.apifootball.com/"
 API_FOOTBALL_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
@@ -20,23 +20,32 @@ API_FOOTBALL_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd
 ODDS_API_KEY = "cc7a0c9ee51e4bc96110d49730acaa"
 ODDS_API_URL = "https://api.the-odds-api.com/v4/sports"
 
+# LIGAS NÓRDICAS + OUTRAS QUE FUNCIONAM NO FREE
 LIGAS_MAPA = {
-    462: {"nome": "BRASIL SERIE A", "odds_key": "soccer_brazil_campeonato"},
-    463: {"nome": "BRASIL SERIE B", "odds_key": "soccer_brazil_serie_b"},
-    148: {"nome": "INGLATERRA PREMIER LEAGUE", "odds_key": "soccer_epl"},
-    302: {"nome": "ESPANHA LA LIGA", "odds_key": "soccer_spain_la_liga"},
-    2077: {"nome": "ITALIA SERIE A", "odds_key": "soccer_italy_serie_a"},
-    175: {"nome": "ALEMANHA BUNDESLIGA", "odds_key": "soccer_germany_bundesliga"},
-    168: {"nome": "FRANCA LIGUE 1", "odds_key": "soccer_france_ligue_one"},
-    94: {"nome": "PORTUGAL PRIMEIRA LIGA", "odds_key": "soccer_portugal_primeira_liga"},
-    183: {"nome": "HOLANDA EREDIVISIE", "odds_key": "soccer_netherlands_eredivisie"},
+    # NÓRDICAS
+    245: {"nome": "SUECIA ALLSVENSKAN", "odds_key": "soccer_sweden_allsvenskan"},
+    246: {"nome": "SUECIA SUPERETTAN", "odds_key": None},
+    118: {"nome": "DINAMARCA SUPERLIGAEN", "odds_key": "soccer_denmark_superliga"},
+    119: {"nome": "DINAMARCA 1 DIVISION", "odds_key": None},
+    142: {"nome": "FINLANDIA VEIKKAUSLIIGA", "odds_key": "soccer_finland_veikkausliiga"},
+    143: {"nome": "FINLANDIA YKKONEN", "odds_key": None},
+    211: {"nome": "NORUEGA ELITESERIEN", "odds_key": "soccer_norway_eliteserien"},
+    212: {"nome": "NORUEGA 1 DIVISION", "odds_key": None},
+    194: {"nome": "ISLANDIA URVALSDEILD", "odds_key": "soccer_iceland_urvalsdeild"},
+
+    # OUTRAS QUE FUNCIONAM NO FREE
+    65: {"nome": "CHILE PRIMERA DIVISION", "odds_key": None},
+    81: {"nome": "COLOMBIA PRIMERA A", "odds_key": None},
+    232: {"nome": "PARAGUAI PRIMERA DIVISION", "odds_key": None},
+    263: {"nome": "URUGUAI PRIMERA DIVISION", "odds_key": None},
+    206: {"nome": "MEXICO LIGA MX", "odds_key": "soccer_mexico_ligamx"},
+    244: {"nome": "USA MLS", "odds_key": "soccer_usa_mls"},
     320: {"nome": "COREIA DO SUL K LEAGUE 1", "odds_key": "soccer_korea_kleague1"},
     201: {"nome": "JAPAO J1 LEAGUE", "odds_key": "soccer_japan_jleague"},
-    305: {"nome": "ARABIA SAUDITA PRO LEAGUE", "odds_key": "soccer_saudi_professional_league"},
 }
 
 st.set_page_config(page_title=f"Analisador asc.bet {VERSAO}", layout="wide")
-st.title(f"Analisador asc.bet {VERSAO} - TOP 20 + Value Real")
+st.title(f"Analisador asc.bet {VERSAO} - TOP 20 + Value Real + Nórdicas")
 
 def poisson_prob(goals, lamb): return poisson.pmf(goals, lamb)
 def calc_prob_over(lamb, linha): return 1 - sum([poisson_prob(i, lamb) for i in range(int(linha))])
@@ -73,14 +82,12 @@ def gerar_pdf_buffer(df):
         dados_tabela = [colunas] + grupo[colunas].values.tolist()
         larguras = [2.2*cm, 1*cm, 4.5*cm, 1*cm, 4.5*cm, 1.8*cm, 2.2*cm, 2*cm]
         tabela = Table(dados_tabela, colWidths=larguras, repeatRows=1)
-        
-        # AQUI ESTAVA O ERRO - FALTAVA O ]
         estilo = TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1A365D")), ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'), ('FONTSIZE', (0,0), (-1,-1), 8),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E0")),
             ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor("#F7FAFC")])
-        ]) # <-- FECHEI AQUI
+        ])
 
         for i in range(1, len(dados_tabela)):
             cor_texto, cor_fundo = get_cor_prob(dados_tabela[i][6])
@@ -103,6 +110,7 @@ def get_standings(league_id):
     params = {"action": "get_standings", "league_id": league_id, "APIkey": API_FOOTBALL_KEY}
     try:
         data = requests.get(API_FOOTBALL_URL, params=params, timeout=10).json()
+        if isinstance(data, dict): return {}, 2.5 # Erro no free
         pos_dict = {t['team_name']: t['overall_league_position'] for t in data}
         total_gols = sum([int(t['overall_league_GF']) + int(t['overall_league_GA']) for t in data])
         total_jogos = sum([int(t['overall_league_payed']) for t in data])
@@ -171,24 +179,26 @@ def carregar_dados():
     tz_br = pytz.timezone('America/Manaus')
     hoje_br = datetime.now(tz_br)
     data_inicio = hoje_br.strftime("%Y-%m-%d")
-    data_fim = (hoje_br + timedelta(days=2)).strftime("%Y-%m-%d")
-    
+    data_fim = (hoje_br + timedelta(days=3)).strftime("%Y-%m-%d") # Aumentei pra 3 dias
+
     st.info(f"Buscando jogos de {data_inicio} até {data_fim}")
 
     with st.spinner("Calculando Poisson + Odds Reais + Tabela..."):
         for league_id, info in LIGAS_MAPA.items():
             nome_liga = info["nome"]
             league_key = info["odds_key"]
-            params = {"action": "get_fixtures", "league_id": league_id, "from": data_inicio, "to": data_fim, "APIkey": API_FOOTBALL_KEY}
+            # CORREÇÃO: Usar get_events com dateFrom/dateTo funciona melhor no free
+            params = {"action": "get_events", "league_id": league_id, "from": data_inicio, "to": data_fim, "APIkey": API_FOOTBALL_KEY}
             r = requests.get(API_FOOTBALL_URL, params=params, timeout=15)
             jogos = r.json()
-            
+
             if isinstance(jogos, dict) and 'message' in jogos:
                 st.warning(f"Erro na liga {nome_liga}: {jogos['message']}")
                 continue
 
             if isinstance(jogos, list):
                 for jogo in jogos:
+                    if jogo['match_status']!= "": continue # Só pega jogos futuros
                     p15, pos_home, pos_away, odd, value = calcular_prob_poisson(
                         jogo['match_hometeam_id'], jogo['match_awayteam_id'], league_id,
                         jogo['match_hometeam_name'], jogo['match_awayteam_name'], league_key
@@ -210,4 +220,4 @@ if not df.empty:
     pdf_buffer = gerar_pdf_buffer(df)
     st.download_button("📥 Baixar PDF do Relatorio", data=pdf_buffer, file_name=f"Relatorio_Analisador_{VERSAO}_{datetime.now().strftime('%d%m%Y')}.pdf", mime="application/pdf", use_container_width=True)
 else:
-    st.error("Nenhum jogo encontrado nos proximos 3 dias para as ligas TOP.")
+    st.error("Nenhum jogo encontrado nos proximos 3 dias. As ligas Nórdicas tem jogo quase todo dia.")
