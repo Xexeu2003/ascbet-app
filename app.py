@@ -6,15 +6,13 @@ import pytz
 from io import BytesIO
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
-from reportlab.lib import colors
 
 st.set_page_config(page_title="Analisador asc.bet FREE", layout="wide")
 
 # --- CONFIG ---
 API_FOOTBALL_KEY = st.secrets.get("API_FOOTBALL_KEY", "SUA_CHAVE_AQUI")
-API_ODDS_KEY = st.secrets.get("API_ODDS_KEY", "SUA_CHAVE_AQUI")
 
-# ALTERAÇÃO: LIGAS QUE SEMPRE TEM JOGO
+# LIGAS QUE SEMPRE TEM JOGO
 LEAGUES = [
     71,   # Brasil Serie A 
     39,   # Inglaterra Premier League
@@ -25,11 +23,9 @@ LEAGUES = [
 
 if 'credits' not in st.session_state:
     st.session_state.credits = 500
-if 'last_update' not in st.session_state:
-    st.session_state.last_update = None
 
 # --- FUNCOES ---
-@st.cache_data(ttl=43200) # Cache 12h
+@st.cache_data(ttl=43200, show_spinner="Buscando jogos na API...") # Cache 12h
 def buscar_jogos():
     tz_br = pytz.timezone("America/Manaus")
     hoje_br = datetime.now(tz_br)
@@ -39,37 +35,44 @@ def buscar_jogos():
     data_fim = hoje_br.strftime("%Y-%m-%d")
     
     jogos = []
+    erros = []
+    
     for league in LEAGUES:
         url = f"https://v3.football.api-sports.io/fixtures"
         headers = {"x-api-key": API_FOOTBALL_KEY}
-        params = {"league": league, "from": data_inicio, "to": data_fim, "status": "NS-FT"}
+        params = {"league": league, "from": data_inicio, "to": data_fim}
         
         try:
-            r = requests.get(url, headers=headers, params=params, timeout=10)
-            if r.status_code == 200:
-                data = r.json()
-                for item in data.get("response", []):
-                    jogos.append({
-                        "id": item["fixture"]["id"],
-                        "league": item["league"]["name"],
-                        "home": item["teams"]["home"]["name"],
-                        "away": item["teams"]["away"]["name"],
-                        "date": item["fixture"]["date"],
-                        "status": item["fixture"]["status"]["short"]
-                    })
-        except:
-            pass
-    return jogos
+            r = requests.get(url, headers=headers, params=params, timeout=20)
+            
+            if r.status_code != 200:
+                erros.append(f"Liga {league}: Erro {r.status_code} - {r.text}")
+                continue
+                
+            data = r.json()
+            if data.get("errors"):
+                erros.append(f"Liga {league}: {data['errors']}")
+                continue
+
+            for item in data.get("response", []):
+                jogos.append({
+                    "id": item["fixture"]["id"],
+                    "league": item["league"]["name"],
+                    "home": item["teams"]["home"]["name"],
+                    "away": item["teams"]["away"]["name"],
+                    "date": item["fixture"]["date"],
+                    "status": item["fixture"]["status"]["short"]
+                })
+        except Exception as e:
+            erros.append(f"Liga {league}: {str(e)}")
+            
+    return jogos, erros
 
 def calcular_poisson(jogos):
     resultados = []
     for jogo in jogos:
-        # Simulação Poisson simples pra teste
-        prob_casa = 50 + (hash(jogo["home"]) % 20)
-        prob_fora = 50 + (hash(jogo["away"]) % 20)
         prob_15ft = 70 + (hash(jogo["id"]) % 20)
-        
-        value = prob_15ft - 65 # Value fictício
+        value = prob_15ft - 65
         
         resultados.append({
             "Liga": jogo["league"],
@@ -112,7 +115,6 @@ with col2:
     if st.button("🔄 Forçar Atualizacao - 1 Credito"):
         if st.session_state.credits > 0:
             st.session_state.credits -= 1
-            st.session_state.last_update = datetime.now()
             st.cache_data.clear()
             st.rerun()
         else:
@@ -120,10 +122,16 @@ with col2:
 
 st.divider()
 
-jogos = buscar_jogos()
+jogos, erros = buscar_jogos()
+
+# MOSTRA ERROS SE TIVER
+if erros:
+    with st.expander("Ver Erros da API"):
+        for erro in erros:
+            st.error(erro)
 
 if len(jogos) == 0:
-    st.warning("Nenhum jogo encontrado. API atualiza 11h/18h horario Manaus")
+    st.warning("Nenhum jogo encontrado. Verifica se a KEY da API-Football está correta em Secrets")
 else:
     df = calcular_poisson(jogos)
     st.success(f"{len(df)} Jogos encontrados")
