@@ -12,7 +12,7 @@ from reportlab.lib.units import cm
 from datetime import datetime, timedelta
 import pytz
 
-VERSAO = "V26.7.9"
+VERSAO = "V26.8.0"
 MARCA_DAGUA = "asc.bet"
 API_FOOTBALL_URL = "https://apiv3.apifootball.com/"
 API_FOOTBALL_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
@@ -20,25 +20,17 @@ API_FOOTBALL_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd
 ODDS_API_KEY = "cc7a0c9ee51e4bc96110d49730acaa"
 ODDS_API_URL = "https://api.the-odds-api.com/v4/sports"
 
-# SÓ LIGAS QUE FUNCIONAM NO PLANO FREE + ISLANDIA
+# LIGAS TESTADAS E FUNCIONANDO
 LIGAS_MAPA = {
-    # NÓRDICAS FREE
-    194: {"nome": "ISLANDIA URVALSDEILD", "odds_key": "soccer_iceland_urvalsdeild"},
+    198: {"nome": "ISLANDIA URVALSDEILD", "odds_key": "soccer_iceland_urvalsdeild"}, # CORRIGIDO
     142: {"nome": "FINLANDIA VEIKKAUSLIIGA", "odds_key": "soccer_finland_veikkausliiga"},
-    
-    # OUTRAS FREE
-    65: {"nome": "CHILE PRIMERA DIVISION", "odds_key": None},
-    81: {"nome": "COLOMBIA PRIMERA A", "odds_key": None},
-    232: {"nome": "PARAGUAI PRIMERA DIVISION", "odds_key": None},
-    263: {"nome": "URUGUAI PRIMERA DIVISION", "odds_key": None},
-    206: {"nome": "MEXICO LIGA MX", "odds_key": "soccer_mexico_ligamx"},
     244: {"nome": "USA MLS", "odds_key": "soccer_usa_mls"},
     320: {"nome": "COREIA DO SUL K LEAGUE 1", "odds_key": "soccer_korea_kleague1"},
     201: {"nome": "JAPAO J1 LEAGUE", "odds_key": "soccer_japan_jleague"},
 }
 
 st.set_page_config(page_title=f"Analisador asc.bet {VERSAO}", layout="wide")
-st.title(f"Analisador asc.bet {VERSAO} - TOP 20 + Value Real + ISLANDIA")
+st.title(f"Analisador asc.bet {VERSAO} - TOP 20 + Value Real")
 
 def poisson_prob(goals, lamb): return poisson.pmf(goals, lamb)
 def calc_prob_over(lamb, linha): return 1 - sum([poisson_prob(i, lamb) for i in range(int(linha))])
@@ -123,7 +115,7 @@ def get_last_8_games(team_id):
 def get_odds_15(league_key, home_team, away_team):
     if not league_key: return 1.85
     url = f"{ODDS_API_URL}/{league_key}/odds"
-    params = {"apiKey": ODDS_API_KEY, "regions": "eu", "markets": "totals", "oddsFormat": "decimal"}
+    params = {"apiKey": ODDS_API_KEY, "regions": "us", "markets": "totals", "oddsFormat": "decimal"} # Mudei pra US
     try:
         r = requests.get(url, params=params, timeout=5).json()
         for game in r:
@@ -172,7 +164,7 @@ def carregar_dados():
     tz_br = pytz.timezone('America/Manaus')
     hoje_br = datetime.now(tz_br)
     data_inicio = hoje_br.strftime("%Y-%m-%d")
-    data_fim = (hoje_br + timedelta(days=5)).strftime("%Y-%m-%d") # 5 dias pra pegar mais islandia
+    data_fim = (hoje_br + timedelta(days=5)).strftime("%Y-%m-%d")
 
     st.info(f"Buscando jogos de {data_inicio} até {data_fim}")
 
@@ -191,6 +183,10 @@ def carregar_dados():
             if isinstance(jogos, list):
                 for jogo in jogos:
                     if jogo['match_status']!= "": continue
+                    # FILTRO ANTI-LIXO: Confere se o nome da liga bate
+                    if nome_liga == "USA MLS" and "United" not in jogo['match_hometeam_name'] and "FC" not in jogo['match_hometeam_name']:
+                        continue
+                    
                     p15, pos_home, pos_away, odd, value = calcular_prob_poisson(
                         jogo['match_hometeam_id'], jogo['match_awayteam_id'], league_id,
                         jogo['match_hometeam_name'], jogo['match_awayteam_name'], league_key
@@ -212,4 +208,4 @@ if not df.empty:
     pdf_buffer = gerar_pdf_buffer(df)
     st.download_button("📥 Baixar PDF do Relatorio", data=pdf_buffer, file_name=f"Relatorio_Analisador_{VERSAO}_{datetime.now().strftime('%d%m%Y')}.pdf", mime="application/pdf", use_container_width=True)
 else:
-    st.error("Nenhum jogo encontrado. Verifique se há jogos na ISLANDIA hoje.")
+    st.error("Nenhum jogo encontrado.")
