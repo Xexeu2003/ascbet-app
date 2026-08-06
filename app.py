@@ -13,13 +13,14 @@ st.set_page_config(page_title="Analisador asc.bet FREE", layout="wide")
 # --- CONFIG ---
 API_FOOTBALL_KEY = st.secrets.get("API_FOOTBALL_KEY", "SUA_CHAVE_AQUI")
 API_ODDS_KEY = st.secrets.get("API_ODDS_KEY", "SUA_CHAVE_AQUI")
+
+# ALTERAÇÃO: LIGAS QUE SEMPRE TEM JOGO
 LEAGUES = [
-    113,  # Suécia Allsvenskan
-    103,  # Noruega Eliteserien
-    682,  # Islândia Premier
-    57,   # China Super League
-    218,  # Áustria Bundesliga
-    140   # Espanha La Liga - só pra ter jogo no teste
+    71,   # Brasil Serie A 
+    39,   # Inglaterra Premier League
+    140,  # Espanha La Liga
+    135,  # Itália Serie A
+    78    # Alemanha Bundesliga
 ]
 
 if 'credits' not in st.session_state:
@@ -33,7 +34,7 @@ def buscar_jogos():
     tz_br = pytz.timezone("America/Manaus")
     hoje_br = datetime.now(tz_br)
     
-    # ALTERAÇÃO AQUI: BUSCAR 7 DIAS PRA TRÁS
+    # BUSCAR 7 DIAS PRA TRÁS PRA TESTE
     data_inicio = (hoje_br - timedelta(days=7)).strftime("%Y-%m-%d")
     data_fim = hoje_br.strftime("%Y-%m-%d")
     
@@ -41,7 +42,7 @@ def buscar_jogos():
     for league in LEAGUES:
         url = f"https://v3.football.api-sports.io/fixtures"
         headers = {"x-api-key": API_FOOTBALL_KEY}
-        params = {"league": league, "from": data_inicio, "to": data_fim, "status": "NS"}
+        params = {"league": league, "from": data_inicio, "to": data_fim, "status": "NS-FT"}
         
         try:
             r = requests.get(url, headers=headers, params=params, timeout=10)
@@ -53,7 +54,8 @@ def buscar_jogos():
                         "league": item["league"]["name"],
                         "home": item["teams"]["home"]["name"],
                         "away": item["teams"]["away"]["name"],
-                        "date": item["fixture"]["date"]
+                        "date": item["fixture"]["date"],
+                        "status": item["fixture"]["status"]["short"]
                     })
         except:
             pass
@@ -73,6 +75,7 @@ def calcular_poisson(jogos):
             "Liga": jogo["league"],
             "Jogo": f"{jogo['home']} x {jogo['away']}",
             "Data": jogo["date"][:16].replace("T", " "),
+            "Status": jogo["status"],
             "Prob 1.5FT %": prob_15ft,
             "Value %": value,
             "Sinal": "GREEN" if value > 5 else "RED"
@@ -92,7 +95,7 @@ def gerar_pdf(df):
             c.showPage()
             y = height - 40
         c.drawString(30, y, f"{row['Liga']} - {row['Jogo']}")
-        c.drawString(30, y-15, f"Prob 1.5FT: {row['Prob 1.5FT %']}% | Value: {row['Value %']}% | Sinal: {row['Sinal']}")
+        c.drawString(30, y-15, f"Status: {row['Status']} | Prob 1.5FT: {row['Prob 1.5FT %']}% | Value: {row['Value %']}% | Sinal: {row['Sinal']}")
         y -= 35
     c.save()
     buffer.seek(0)
@@ -103,7 +106,7 @@ st.title("Analisador asc.bet V26.16.1 FREE - Modo FREE 500 creditos")
 
 col1, col2 = st.columns([2,1])
 with col1:
-    st.info(f"Buscando jogos de 7 dias atrás até hoje | Cache 12h ativo")
+    st.info(f"Buscando jogos de 7 dias atras ate hoje | Cache 12h ativo")
 with col2:
     st.metric("Creditos Odds API", f"{st.session_state.credits}/500")
     if st.button("🔄 Forçar Atualizacao - 1 Credito"):
@@ -137,7 +140,3 @@ else:
 
 st.divider()
 st.caption("Modo FREE: Atualiza 2x ao dia. Cache de 12h para economizar creditos.")
-
-
-
-
