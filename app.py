@@ -15,11 +15,11 @@ import time
 import os
 import json
 
-VERSAO = "V26.14.2"
+VERSAO = "V26.14.3"
 MARCA_DAGUA = "asc.bet"
 API_FOOTBALL_URL = "https://apiv3.apifootball.com/"
 API_FOOTBALL_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
-HISTORICO_FILE = "historico_ascbet.json" # MUDEI: Tirei /mnt/data/
+HISTORICO_FILE = "historico_ascbet.json"
 
 ODDS_API_KEY = "cc7a0c9ee51e4bc96110d49730acaa"
 ODDS_API_URL = "https://api.the-odds-api.com/v4/sports"
@@ -40,7 +40,6 @@ LIGAS_MAPA = {
 st.set_page_config(page_title=f"Analisador asc.bet {VERSAO}", layout="wide")
 st.title(f"Analisador asc.bet {VERSAO} - TOP 10 + Histórico 7 Dias")
 
-# AUTO REFRESH
 if 'last_update' not in st.session_state:
     st.session_state.last_update = time.time()
 if time.time() - st.session_state.last_update > REFRESH_MINUTOS * 60:
@@ -84,7 +83,6 @@ def mostrar_historico():
     greens = len(df_hist[df_hist['status'] == 'green'])
     reds = len(df_hist[df_hist['status'] == 'red'])
     assertividade = (greens / total * 100) if total > 0 else 0
-    
     st.sidebar.subheader(f"📊 Historico 7 Dias")
     st.sidebar.metric("Assertividade Over 1.5", f"{assertividade:.1f}%")
     st.sidebar.metric("Green", greens, delta=greens)
@@ -122,7 +120,7 @@ def gerar_pdf_buffer(df):
 
     for liga, grupo in df.groupby('Liga'):
         elementos.append(Paragraph(f"LIGA: {liga}", styles['LigaTitulo']))
-        colunas = ["Data", "PosCasa", "Casa", "PosFora", "Fora", "Odd 1.5", "Prob 0.5HT", "Prob 1.5FT", "Prob 2.5FT", "BTTS", "Casa", "Empate", "Fora", "Value"]
+        colunas = ["Data", "PosCasa", "Casa", "PosFora", "Fora", "Odd 1.5", "Prob 0.5HT", "Prob 1.5FT", "Prob 2.5FT", "BTTS", "ProbCasa", "ProbEmpate", "ProbFora", "Value"] # CORRIGIDO
         dados_tabela = [colunas] + grupo[colunas].values.tolist()
         larguras = [1.6*cm, 0.9*cm, 2.5*cm, 0.9*cm, 2.5*cm, 1.3*cm, 1.4*cm, 1.4*cm, 1.4*cm, 1.2*cm, 1.2*cm, 1.2*cm, 1.2*cm, 1.4*cm]
         tabela = Table(dados_tabela, colWidths=larguras, repeatRows=1)
@@ -137,7 +135,7 @@ def gerar_pdf_buffer(df):
             estilo.add('TEXTCOLOR', (7, i), (7, i), cor_texto)
             estilo.add('FONTNAME', (7, i), (7, i), 'Helvetica-Bold')
             if cor_fundo!= colors.white: estilo.add('BACKGROUND', (7, i), (7, i), cor_fundo)
-            for col in [10, 11, 12]:
+            for col in [10, 11, 12]: # ProbCasa ProbEmpate ProbFora
                 try:
                     if float(dados_tabela[i][col].replace('%','')) > 50:
                         estilo.add('BACKGROUND', (col, i), (col, i), colors.HexColor("#BFDBFE"))
@@ -255,10 +253,10 @@ def carregar_dados(ligas_selecionadas, filtro_value, filtro_prob, mostrar_todos)
                         if val_num < filtro_value and prob_num < filtro_prob: continue
                     todos_jogos.append({
                         "Liga": nome_liga, "Data": datetime.strptime(jogo['match_date'], "%Y-%m-%d").strftime("%d/%m/%Y"),
-                        "PosCasa": pos_home, "Casa": jogo['match_hometeam_name'],
-                        "PosFora": pos_away, "Fora": jogo['match_awayteam_name'],
+                        "PosCasa": pos_home, "Casa": jogo['match_hometeam_name'], # NOME
+                        "PosFora": pos_away, "Fora": jogo['match_awayteam_name'], # NOME
                         "Odd 1.5": odd, "Prob 0.5HT": p05, "Prob 1.5FT": p15, "Prob 2.5FT": p25,
-                        "BTTS": btts, "Casa": p_casa, "Empate": p_empate, "Fora": p_fora, "Value": value,
+                        "BTTS": btts, "ProbCasa": p_casa, "ProbEmpate": p_empate, "ProbFora": p_fora, "Value": value, # PROB
                         "ValueNum": val_num, "ProbNum": prob_num
                     })
     return pd.DataFrame(todos_jogos)
@@ -279,7 +277,7 @@ if not df.empty:
     atualizar_historico(df)
     top3 = df[df['ValueNum'] > 40].sort_values(by='ValueNum', ascending=False).head(3)
     if not top3.empty:
-        top3_text = " | ".join([f"{row['Casa']} x {row['Fora']} - {row['Value']}" for _, row in top3.iterrows()])
+        top3_text = " | ".join([f"{row['Casa']} x {row['Fora']} - {row['Value']}" for _, row in top3.iterrows()]) # CORRIGIDO
         st.success(f"🔥 TOP 3 DO DIA - Value > 40%: {top3_text}")
     df = df.sort_values(by='ProbNum', ascending=False).head(10)
     df_display = df.drop(columns=['ValueNum', 'ProbNum'])
