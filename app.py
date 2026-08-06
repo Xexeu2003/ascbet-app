@@ -12,7 +12,7 @@ from reportlab.lib.units import cm
 from datetime import datetime, timedelta
 import pytz
 
-VERSAO = "V26.12.0"
+VERSAO = "V26.12.1"
 MARCA_DAGUA = "asc.bet"
 API_FOOTBALL_URL = "https://apiv3.apifootball.com/"
 API_FOOTBALL_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
@@ -20,13 +20,12 @@ API_FOOTBALL_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd
 ODDS_API_KEY = "cc7a0c9ee51e4bc96110d49730acaa"
 ODDS_API_URL = "https://api.the-odds-api.com/v4/sports"
 
-# MAPA DE LIGAS ATUALIZADO
 LIGAS_MAPA = {
     534: {"nome": "SUECIA ALLSVENSKAN", "odds_key": "soccer_sweden_allsvenskan"},
     103: {"nome": "NORUEGA ELITESERIEN", "odds_key": "soccer_norway_eliteserien"},
     522: {"nome": "FINLANDIA VEIKKAUSLIIGA", "odds_key": "soccer_finland_veikkausliiga"},
     198: {"nome": "ISLANDIA BESTA DEILD", "odds_key": "soccer_iceland_urvalsdeild"},
-    337: {"nome": "ESTONIA MEISTRILIIGA", "odds_key": None}, # API Odds não tem
+    337: {"nome": "ESTONIA MEISTRILIIGA", "odds_key": None},
     340: {"nome": "LETONIA VIRSLIGA", "odds_key": None},
     341: {"nome": "LITUANIA A LYGA", "odds_key": None},
     523: {"nome": "ILHAS FAROE BETRI DEILDIN", "odds_key": None},
@@ -132,7 +131,7 @@ def get_last_8_games(team_id):
 
 @st.cache_data(ttl=900)
 def get_odds_15(league_key, home_team, away_team):
-    if not league_key: return 1.85 # Usa odd padrão se não tiver na OddsAPI
+    if not league_key: return 1.85
     url = f"{ODDS_API_URL}/{league_key}/odds"
     params = {"apiKey": ODDS_API_KEY, "regions": "eu", "markets": "totals", "oddsFormat": "decimal"}
     try:
@@ -196,7 +195,7 @@ def calcular_prob_poisson(home_id, away_id, league_id, home_name, away_name, lea
     return f"{int(prob_05ht)}%", f"{int(prob_15ft)}%", f"{int(prob_25ft)}%", f"{int(prob_btts)}%", f"{int(prob_casa)}%", f"{int(prob_empate)}%", f"{int(prob_fora)}%", home_pos, away_pos, f"{odd_real:.2f}", value_str
 
 @st.cache_data(ttl=1800)
-def carregar_dados(ligas_selecionadas):
+def carregar_dados(ligas_selecionadas, filtro_value, filtro_prob, mostrar_todos):
     todos_jogos = []
     tz_br = pytz.timezone('America/Manaus')
     hoje_br = datetime.now(tz_br)
@@ -221,7 +220,13 @@ def carregar_dados(ligas_selecionadas):
                         jogo['match_hometeam_id'], jogo['match_awayteam_id'], league_id,
                         jogo['match_hometeam_name'], jogo['match_awayteam_name'], league_key
                     )
-                    if float(value.replace('%','')) < 20 or int(p15.replace('%','')) < 80: continue
+                    
+                    # OPÇÃO 1 + 2: FILTRO COM SLIDER E BOTÃO MOSTRAR TODOS
+                    val_num = float(value.replace('%',''))
+                    prob_num = int(p15.replace('%',''))
+                    
+                    if not mostrar_todos:
+                        if val_num < filtro_value and prob_num < filtro_prob: continue
                     
                     todos_jogos.append({
                         "Liga": nome_liga, "Data": datetime.strptime(jogo['match_date'], "%Y-%m-%d").strftime("%d/%m/%Y"),
@@ -232,6 +237,7 @@ def carregar_dados(ligas_selecionadas):
                     })
     return pd.DataFrame(todos_jogos)
 
+# SIDEBAR COM FILTROS NOVOS
 st.sidebar.header("Filtros")
 ligas_opcoes = {v["nome"]: k for k, v in LIGAS_MAPA.items()}
 ligas_selecionadas = st.sidebar.multiselect(
@@ -240,8 +246,14 @@ ligas_selecionadas = st.sidebar.multiselect(
     default=list(ligas_opcoes.keys())
 )
 
+# OPÇÃO 2: SLIDER + BOTÃO
+st.sidebar.subheader("Filtro de Qualidade")
+mostrar_todos = st.sidebar.checkbox("Mostrar todos os jogos", value=False)
+filtro_value = st.sidebar.slider("Value Mínimo %", 0, 50, 10)
+filtro_prob = st.sidebar.slider("Prob 1.5FT Mínima %", 60, 90, 75)
+
 ligas_ids = [ligas_opcoes[nome] for nome in ligas_selecionadas]
-df = carregar_dados(ligas_ids)
+df = carregar_dados(ligas_ids, filtro_value, filtro_prob, mostrar_todos)
 
 if not df.empty:
     df['Prob 1.5FT Num'] = df['Prob 1.5FT'].str.replace('%','').astype(int)
@@ -257,4 +269,4 @@ if not df.empty:
         csv_buffer = gerar_csv_buffer(df)
         st.download_button("📊 Exportar CSV", data=csv_buffer, file_name=f"Relatorio_Analisador_{VERSAO}_{datetime.now().strftime('%d%m%Y')}.csv", mime="text/csv", use_container_width=True)
 else:
-    st.warning("Nenhum jogo com Value > 20% e Prob 1.5FT > 80% encontrado nas ligas selecionadas.")
+    st.warning(f"Nenhum jogo encontrado com Value > {filtro_value}% ou Prob 1.5FT > {filtro_prob}%. Marque 'Mostrar todos os jogos' pra ver tudo.")
