@@ -12,7 +12,7 @@ from reportlab.lib.units import cm
 from datetime import datetime, timedelta
 import pytz
 
-VERSAO = "V26.7.8"
+VERSAO = "V26.7.9"
 MARCA_DAGUA = "asc.bet"
 API_FOOTBALL_URL = "https://apiv3.apifootball.com/"
 API_FOOTBALL_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
@@ -20,20 +20,13 @@ API_FOOTBALL_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd
 ODDS_API_KEY = "cc7a0c9ee51e4bc96110d49730acaa"
 ODDS_API_URL = "https://api.the-odds-api.com/v4/sports"
 
-# LIGAS NÓRDICAS + OUTRAS QUE FUNCIONAM NO FREE
+# SÓ LIGAS QUE FUNCIONAM NO PLANO FREE + ISLANDIA
 LIGAS_MAPA = {
-    # NÓRDICAS
-    245: {"nome": "SUECIA ALLSVENSKAN", "odds_key": "soccer_sweden_allsvenskan"},
-    246: {"nome": "SUECIA SUPERETTAN", "odds_key": None},
-    118: {"nome": "DINAMARCA SUPERLIGAEN", "odds_key": "soccer_denmark_superliga"},
-    119: {"nome": "DINAMARCA 1 DIVISION", "odds_key": None},
-    142: {"nome": "FINLANDIA VEIKKAUSLIIGA", "odds_key": "soccer_finland_veikkausliiga"},
-    143: {"nome": "FINLANDIA YKKONEN", "odds_key": None},
-    211: {"nome": "NORUEGA ELITESERIEN", "odds_key": "soccer_norway_eliteserien"},
-    212: {"nome": "NORUEGA 1 DIVISION", "odds_key": None},
+    # NÓRDICAS FREE
     194: {"nome": "ISLANDIA URVALSDEILD", "odds_key": "soccer_iceland_urvalsdeild"},
-
-    # OUTRAS QUE FUNCIONAM NO FREE
+    142: {"nome": "FINLANDIA VEIKKAUSLIIGA", "odds_key": "soccer_finland_veikkausliiga"},
+    
+    # OUTRAS FREE
     65: {"nome": "CHILE PRIMERA DIVISION", "odds_key": None},
     81: {"nome": "COLOMBIA PRIMERA A", "odds_key": None},
     232: {"nome": "PARAGUAI PRIMERA DIVISION", "odds_key": None},
@@ -45,7 +38,7 @@ LIGAS_MAPA = {
 }
 
 st.set_page_config(page_title=f"Analisador asc.bet {VERSAO}", layout="wide")
-st.title(f"Analisador asc.bet {VERSAO} - TOP 20 + Value Real + Nórdicas")
+st.title(f"Analisador asc.bet {VERSAO} - TOP 20 + Value Real + ISLANDIA")
 
 def poisson_prob(goals, lamb): return poisson.pmf(goals, lamb)
 def calc_prob_over(lamb, linha): return 1 - sum([poisson_prob(i, lamb) for i in range(int(linha))])
@@ -110,7 +103,7 @@ def get_standings(league_id):
     params = {"action": "get_standings", "league_id": league_id, "APIkey": API_FOOTBALL_KEY}
     try:
         data = requests.get(API_FOOTBALL_URL, params=params, timeout=10).json()
-        if isinstance(data, dict): return {}, 2.5 # Erro no free
+        if isinstance(data, dict): return {}, 2.5
         pos_dict = {t['team_name']: t['overall_league_position'] for t in data}
         total_gols = sum([int(t['overall_league_GF']) + int(t['overall_league_GA']) for t in data])
         total_jogos = sum([int(t['overall_league_payed']) for t in data])
@@ -134,7 +127,7 @@ def get_odds_15(league_key, home_team, away_team):
     try:
         r = requests.get(url, params=params, timeout=5).json()
         for game in r:
-            if home_team.lower()[:5] in game['home_team'].lower() and away_team.lower()[:5] in game['away_team'].lower():
+            if home_team.lower()[:4] in game['home_team'].lower() and away_team.lower()[:4] in game['away_team'].lower():
                 for book in game['bookmakers']:
                     for market in book['markets']:
                         if market['key'] == 'totals':
@@ -179,7 +172,7 @@ def carregar_dados():
     tz_br = pytz.timezone('America/Manaus')
     hoje_br = datetime.now(tz_br)
     data_inicio = hoje_br.strftime("%Y-%m-%d")
-    data_fim = (hoje_br + timedelta(days=3)).strftime("%Y-%m-%d") # Aumentei pra 3 dias
+    data_fim = (hoje_br + timedelta(days=5)).strftime("%Y-%m-%d") # 5 dias pra pegar mais islandia
 
     st.info(f"Buscando jogos de {data_inicio} até {data_fim}")
 
@@ -187,7 +180,6 @@ def carregar_dados():
         for league_id, info in LIGAS_MAPA.items():
             nome_liga = info["nome"]
             league_key = info["odds_key"]
-            # CORREÇÃO: Usar get_events com dateFrom/dateTo funciona melhor no free
             params = {"action": "get_events", "league_id": league_id, "from": data_inicio, "to": data_fim, "APIkey": API_FOOTBALL_KEY}
             r = requests.get(API_FOOTBALL_URL, params=params, timeout=15)
             jogos = r.json()
@@ -198,7 +190,7 @@ def carregar_dados():
 
             if isinstance(jogos, list):
                 for jogo in jogos:
-                    if jogo['match_status']!= "": continue # Só pega jogos futuros
+                    if jogo['match_status']!= "": continue
                     p15, pos_home, pos_away, odd, value = calcular_prob_poisson(
                         jogo['match_hometeam_id'], jogo['match_awayteam_id'], league_id,
                         jogo['match_hometeam_name'], jogo['match_awayteam_name'], league_key
@@ -220,4 +212,4 @@ if not df.empty:
     pdf_buffer = gerar_pdf_buffer(df)
     st.download_button("📥 Baixar PDF do Relatorio", data=pdf_buffer, file_name=f"Relatorio_Analisador_{VERSAO}_{datetime.now().strftime('%d%m%Y')}.pdf", mime="application/pdf", use_container_width=True)
 else:
-    st.error("Nenhum jogo encontrado nos proximos 3 dias. As ligas Nórdicas tem jogo quase todo dia.")
+    st.error("Nenhum jogo encontrado. Verifique se há jogos na ISLANDIA hoje.")
