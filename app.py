@@ -37,10 +37,10 @@ def buscar_stats_cache(time_id):
                        (time_id, (datetime.now()-timedelta(hours=24)).isoformat())).fetchone()
     if res: return res
     
-    # BUSCA NA API E GASTA 1 CREDITO
+    # BUSCA NA API E GASTA 1 CREDITO - TEMP 2025
     url = f"https://v3.football.api-sports.io/teams/statistics"
     headers = {"x-apisports-key": FOOTBALL_API_KEY}
-    params = {"team": time_id, "season": "2026"}
+    params = {"team": time_id, "season": "2025"} 
     try:
         r = requests.get(url, headers=headers, params=params, timeout=10)
         if r.status_code != 200: return None
@@ -80,10 +80,10 @@ def buscar_jogos_reais():
             log_erros.append("TRAVA DE SEGURANÇA: Parou em 90 req pra não estourar o limite")
             break
 
-        # BUSCAR DE HOJE ATE 7 DIAS PRA TER JOGO
+        # BUSCAR DE HOJE ATE 7 DIAS PRA TER JOGO - TEMP 2025
         url = f"https://v3.football.api-sports.io/fixtures"
         headers = {"x-apisports-key": FOOTBALL_API_KEY}
-        params = {"league": liga_id, "season": "2026", "from": data_hoje, "to": data_7dias}
+        params = {"league": liga_id, "season": "2025", "from": data_hoje, "to": data_7dias}
         r = requests.get(url, headers=headers, params=params)
         total_req += 1
 
@@ -135,7 +135,7 @@ def gerar_pdf(df):
     y = height - 50
     c.setFont("Helvetica-Bold", 18)
     c.setFillColor(colors.HexColor("#0D47A1"))
-    c.drawCentredString(width / 2, y, f"Relatorio Analisador asc.bet V26.16.14 - DADOS REAIS")
+    c.drawCentredString(width / 2, y, f"Relatorio Analisador asc.bet V26.16.15 - TEMP 2025")
     y -= 15
     c.setFont("Helvetica-Oblique", 8)
     c.drawCentredString(width / 2, y, f"Gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
@@ -171,9 +171,9 @@ def gerar_pdf(df):
     c.save(); buffer.seek(0); return buffer
 
 # --- INTERFACE ---
-st.title("Analisador asc.bet V26.16.14 - DEBUG TOTAL")
-st.info("Ligas: BR A/B, MLS, Suécia, Noruega, Islândia. Busca jogos de hoje até +7 dias.")
-st.warning("Modo FREE: Max 100 req/dia na API-Football. App tem trava em 90 req e cache de 24h.")
+st.title("Analisador asc.bet V26.16.15 - TEMPORADA 2025")
+st.info("ATENÇÃO: Usando dados da temporada 2025 porque 2026 ainda não foi cadastrada na API-Football")
+st.warning("Modo FREE: Max 100 req/dia. App tem trava em 90 req e cache de 24h.")
 
 col1, col2 = st.columns(2)
 with col1:
@@ -200,6 +200,6 @@ if len(jogos_df) > 0:
     
     if len(df) > 0:
         pdf = gerar_pdf(df)
-        st.download_button("📄 Baixar PDF DADOS REAIS", data=pdf, file_name=f"Relatorio_REAL_{datetime.now().strftime('%d%m%Y')}.pdf")
+        st.download_button("📄 Baixar PDF DADOS REAIS", data=pdf, file_name=f"Relatorio_2025_{datetime.now().strftime('%d%m%Y')}.pdf")
 else:
     st.error("Nenhum sinal GREEN encontrado. Veja o Log acima pra saber o motivo.")
