@@ -9,58 +9,29 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.lib.units import cm
-from datetime import datetime
+from datetime import datetime, timedelta
+import pytz
 
-VERSAO = "V26.7.5"
+VERSAO = "V26.7.6"
 MARCA_DAGUA = "asc.bet"
 API_FOOTBALL_URL = "https://apiv3.apifootball.com/"
 API_FOOTBALL_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
 
-ODDS_API_KEY = "cc7a0c9ee51e4bc96110d49730acacaa" # SUA KEY DA THE ODDS API
+ODDS_API_KEY = "cc7a0c9ee51e4bc96110d49730acacaa"
 ODDS_API_URL = "https://api.the-odds-api.com/v4/sports"
 
-# SUAS LIGAS DO ARQUIVO + MAPEAMENTO COM ODDSAPI
 LIGAS_MAPA = {
-    # BRASIL / AMERICA
     462: {"nome": "BRASIL SERIE A", "odds_key": "soccer_brazil_campeonato"},
     463: {"nome": "BRASIL SERIE B", "odds_key": "soccer_brazil_serie_b"},
-    464: {"nome": "BRASIL SERIE C", "odds_key": None},
-    37: {"nome": "ARGENTINA PRIMERA DIVISION", "odds_key": "soccer_argentina_liga_profesional"},
-    65: {"nome": "CHILE PRIMERA DIVISION", "odds_key": None},
-    81: {"nome": "COLOMBIA PRIMERA A", "odds_key": None},
-    232: {"nome": "PARAGUAI PRIMERA DIVISION", "odds_key": None},
-    263: {"nome": "URUGUAI PRIMERA DIVISION", "odds_key": None},
-    274: {"nome": "VENEZUELA LIGA FUTVE", "odds_key": None},
-    206: {"nome": "MEXICO LIGA MX", "odds_key": "soccer_mexico_ligamx"},
-    244: {"nome": "USA MLS", "odds_key": "soccer_usa_mls"},
-
-    # EUROPA TOP
     148: {"nome": "INGLATERRA PREMIER LEAGUE", "odds_key": "soccer_epl"},
-    149: {"nome": "INGLATERRA CHAMPIONSHIP", "odds_key": None},
     302: {"nome": "ESPANHA LA LIGA", "odds_key": "soccer_spain_la_liga"},
     2077: {"nome": "ITALIA SERIE A", "odds_key": "soccer_italy_serie_a"},
     175: {"nome": "ALEMANHA BUNDESLIGA", "odds_key": "soccer_germany_bundesliga"},
     168: {"nome": "FRANCA LIGUE 1", "odds_key": "soccer_france_ligue_one"},
     94: {"nome": "PORTUGAL PRIMEIRA LIGA", "odds_key": "soccer_portugal_primeira_liga"},
     183: {"nome": "HOLANDA EREDIVISIE", "odds_key": "soccer_netherlands_eredivisie"},
-    54: {"nome": "BELGICA JUPILER PRO LEAGUE", "odds_key": "soccer_belgium_first_div"},
-    245: {"nome": "SUECIA ALLSVENSKAN", "odds_key": None},
-    118: {"nome": "DINAMARCA SUPERLIGAEN", "odds_key": "soccer_denmark_superliga"},
-    142: {"nome": "FINLANDIA VEIKKAUSLIIGA", "odds_key": None},
-    237: {"nome": "POLONIA EKSTRAKLASA", "odds_key": "soccer_poland_ekstraklasa"},
-    105: {"nome": "CROACIA HNL", "odds_key": None},
-    191: {"nome": "HUNGRIA NB I", "odds_key": None},
-    243: {"nome": "SUIÇA SUPER LEAGUE", "odds_key": "soccer_switzerland_superleague"},
-    262: {"nome": "TURQUIA SUPER LIG", "odds_key": "soccer_turkey_super_league"},
-    164: {"nome": "GRECIA SUPER LEAGUE 1", "odds_key": "soccer_greece_super_league"},
-    195: {"nome": "ISRAEL LIGAT HA'AL", "odds_key": None},
-
-    # ASIA / OCEANIA
-    50: {"nome": "AUSTRALIA A-LEAGUE", "odds_key": "soccer_australia_aleague"},
-    201: {"nome": "JAPAO J1 LEAGUE", "odds_key": "soccer_japan_jleague"},
-    71: {"nome": "CHINA SUPER LEAGUE", "odds_key": "soccer_china_superleague"},
     320: {"nome": "COREIA DO SUL K LEAGUE 1", "odds_key": "soccer_korea_kleague1"},
-    193: {"nome": "INDIA SUPER LEAGUE", "odds_key": None},
+    201: {"nome": "JAPAO J1 LEAGUE", "odds_key": "soccer_japan_jleague"},
     305: {"nome": "ARABIA SAUDITA PRO LEAGUE", "odds_key": "soccer_saudi_professional_league"},
 }
 
@@ -106,15 +77,14 @@ def gerar_pdf_buffer(df):
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1A365D")), ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'), ('FONTSIZE', (0,0), (-1,-1), 8),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E0")),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor("#F7FAFC")])])
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor("#F7FAFC")])
 
         for i in range(1, len(dados_tabela)):
-            cor_texto, cor_fundo = get_cor_prob(dados_tabela[i][6]) # Prob 1.5
+            cor_texto, cor_fundo = get_cor_prob(dados_tabela[i][6])
             estilo.add('TEXTCOLOR', (6, i), (6, i), cor_texto)
             estilo.add('FONTNAME', (6, i), (6, i), 'Helvetica-Bold')
             if cor_fundo!= colors.white: estilo.add('BACKGROUND', (6, i), (6, i), cor_fundo)
-
-            try: # Pinta Value
+            try:
                 if float(dados_tabela[i][7].replace('%','')) > 5:
                     estilo.add('BACKGROUND', (7, i), (7, i), colors.HexColor("#A7F3D0"))
                     estilo.add('FONTNAME', (7, i), (7, i), 'Helvetica-Bold')
@@ -176,38 +146,49 @@ def calcular_prob_poisson(home_id, away_id, league_id, home_name, away_name, lea
     away_gf = np.mean([int(g['match_awayteam_score']) for g in away_games]) if away_games else 1.0
     away_ga = np.mean([int(g['match_hometeam_score']) for g in away_games]) if away_games else 1.0
 
-    home_attack = home_gf / (league_avg / 2)
-    home_defense = home_ga / (league_avg / 2)
-    away_attack = away_gf / (league_avg / 2)
-    away_defense = away_ga / (league_avg / 2)
+    home_attack = home_gf / (league_avg / 2) if league_avg > 0 else 1
+    home_defense = home_ga / (league_avg / 2) if league_avg > 0 else 1
+    away_attack = away_gf / (league_avg / 2) if league_avg > 0 else 1
+    away_defense = away_ga / (league_avg / 2) if league_avg > 0 else 1
 
     home_lambda = home_attack * away_defense * (league_avg / 2)
     away_lambda = away_attack * home_defense * (league_avg / 2)
     total_lambda = home_lambda + away_lambda
 
     prob_15ft = calc_prob_over(total_lambda, 1.5) * 100
-    prob_25ft = calc_prob_over(total_lambda, 2.5) * 100
-    lambda_ht = total_lambda * 0.45
-    prob_05ht = calc_prob_over(lambda_ht, 0.5) * 100
-
     odd_real = get_odds_15(league_key, home_name, away_name)
     value = (prob_15ft / 100) * odd_real - 1
     value_str = f"{value*100:.1f}%"
 
-    return f"{int(prob_05ht)}%", f"{int(prob_15ft)}%", f"{int(prob_25ft)}%", home_pos, away_pos, f"{odd_real:.2f}", value_str
+    return f"{int(prob_15ft)}%", home_pos, away_pos, f"{odd_real:.2f}", value_str
 
 @st.cache_data(ttl=1800)
 def carregar_dados():
     todos_jogos = []
-    hoje = datetime.now().strftime("%Y-%m-%d")
+    # CORREÇÃO 1: Pega data de Manaus e +2 dias pra frente
+    tz_br = pytz.timezone('America/Manaus')
+    hoje_br = datetime.now(tz_br)
+    data_inicio = hoje_br.strftime("%Y-%m-%d")
+    data_fim = (hoje_br + timedelta(days=2)).strftime("%Y-%m-%d")
+    
+    st.info(f"Buscando jogos de {data_inicio} até {data_fim}")
+
     with st.spinner("Calculando Poisson + Odds Reais + Tabela..."):
         for league_id, info in LIGAS_MAPA.items():
             nome_liga = info["nome"]
             league_key = info["odds_key"]
-            jogos = requests.get(API_FOOTBALL_URL, params={"action": "get_fixtures", "league_id": league_id, "from": hoje, "to": hoje, "APIkey": API_FOOTBALL_KEY}, timeout=15).json()
+            params = {"action": "get_fixtures", "league_id": league_id, "from": data_inicio, "to": data_fim, "APIkey": API_FOOTBALL_KEY}
+            r = requests.get(API_FOOTBALL_URL, params=params, timeout=15)
+            jogos = r.json()
+            
+            # CORREÇÃO 2: Mostra erro da API se tiver
+            if isinstance(jogos, dict) and 'message' in jogos:
+                st.warning(f"Erro na liga {nome_liga}: {jogos['message']}")
+                continue
+
             if isinstance(jogos, list):
                 for jogo in jogos:
-                    p05, p15, p25, pos_home, pos_away, odd, value = calcular_prob_poisson(
+                    p15, pos_home, pos_away, odd, value = calcular_prob_poisson(
                         jogo['match_hometeam_id'], jogo['match_awayteam_id'], league_id,
                         jogo['match_hometeam_name'], jogo['match_awayteam_name'], league_key
                     )
@@ -215,7 +196,7 @@ def carregar_dados():
                         "Liga": nome_liga, "Data": datetime.strptime(jogo['match_date'], "%Y-%m-%d").strftime("%d/%m/%Y"),
                         "Pos": pos_home, "Casa": jogo['match_hometeam_name'],
                         "Pos": pos_away, "Fora": jogo['match_awayteam_name'],
-                        "Odd 1.5": odd, "Prob 0.5FT": p05, "Prob 1.5FT": p15, "Prob 2.5FT": p25, "Value": value,
+                        "Odd 1.5": odd, "Prob 1.5FT": p15, "Value": value,
                     })
     return pd.DataFrame(todos_jogos)
 
@@ -228,4 +209,4 @@ if not df.empty:
     pdf_buffer = gerar_pdf_buffer(df)
     st.download_button("📥 Baixar PDF do Relatorio", data=pdf_buffer, file_name=f"Relatorio_Analisador_{VERSAO}_{datetime.now().strftime('%d%m%Y')}.pdf", mime="application/pdf", use_container_width=True)
 else:
-    st.warning("Nenhum jogo encontrado hoje para as ligas.")
+    st.error("Nenhum jogo encontrado nos proximos 3 dias para as ligas TOP. Isso é normal no plano free da API.")
