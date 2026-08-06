@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 import pytz
 import time
 
-VERSAO = "V26.13.0"
+VERSAO = "V26.13.1"
 MARCA_DAGUA = "asc.bet"
 API_FOOTBALL_URL = "https://apiv3.apifootball.com/"
 API_FOOTBALL_KEY = "37ebce0fe025b1c24efd20ea8d37e461704b594816bb0d77ee6691a62bfd8205"
@@ -48,6 +48,9 @@ if time.time() - st.session_state.last_update > REFRESH_MINUTOS * 60:
 
 tempo_restante = REFRESH_MINUTOS - int((time.time() - st.session_state.last_update) / 60)
 st.sidebar.info(f"Proxima atualizacao em: {tempo_restante}min")
+if st.sidebar.button("🔄 Forcar Atualizacao Agora"):
+    st.session_state.last_update = 0
+    st.rerun()
 
 def poisson_prob(goals, lamb): return poisson.pmf(goals, lamb)
 def calc_prob_over(lamb, linha): return 1 - sum([poisson_prob(i, lamb) for i in range(int(linha))])
@@ -80,9 +83,9 @@ def gerar_pdf_buffer(df):
 
     for liga, grupo in df.groupby('Liga'):
         elementos.append(Paragraph(f"LIGA: {liga}", styles['LigaTitulo']))
-        colunas = ["Data", "Pos", "Casa", "Pos", "Fora", "Odd 1.5", "Prob 0.5HT", "Prob 1.5FT", "Prob 2.5FT", "BTTS", "Casa", "Empate", "Fora", "Value"]
+        colunas = ["Data", "PosCasa", "Casa", "PosFora", "Fora", "Odd 1.5", "Prob 0.5HT", "Prob 1.5FT", "Prob 2.5FT", "BTTS", "Casa", "Empate", "Fora", "Value"]
         dados_tabela = [colunas] + grupo[colunas].values.tolist()
-        larguras = [1.6*cm, 0.6*cm, 2.8*cm, 0.6*cm, 2.8*cm, 1.3*cm, 1.4*cm, 1.4*cm, 1.4*cm, 1.2*cm, 1.2*cm, 1.2*cm, 1.2*cm, 1.4*cm]
+        larguras = [1.6*cm, 0.9*cm, 2.5*cm, 0.9*cm, 2.5*cm, 1.3*cm, 1.4*cm, 1.4*cm, 1.4*cm, 1.2*cm, 1.2*cm, 1.2*cm, 1.2*cm, 1.4*cm]
         tabela = Table(dados_tabela, colWidths=larguras, repeatRows=1)
         estilo = TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1A365D")), ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
@@ -108,7 +111,7 @@ def gerar_pdf_buffer(df):
                 if float(dados_tabela[i][13].replace('%','')) > 20:
                     estilo.add('BACKGROUND', (13, i), (13, i), colors.HexColor("#A7F3D0"))
                     estilo.add('FONTNAME', (13, i), (13, i), 'Helvetica-Bold')
-            except: pass
+                except: pass
         tabela.setStyle(estilo)
         elementos.append(tabela)
     doc.build(elementos, onFirstPage=adicionar_marca_dagua, onLaterPages=adicionar_marca_dagua)
@@ -213,7 +216,7 @@ def carregar_dados(ligas_selecionadas, filtro_value, filtro_prob, mostrar_todos)
     tz_br = pytz.timezone('America/Manaus')
     hoje_br = datetime.now(tz_br)
     data_inicio = hoje_br.strftime("%Y-%m-%d")
-    data_fim = (hoje_br + timedelta(days=14)).strftime("%Y-%m-%d") # 14 DIAS
+    data_fim = (hoje_br + timedelta(days=14)).strftime("%Y-%m-%d")
 
     st.info(f"Buscando jogos de {data_inicio} até {data_fim} em {len(ligas_selecionadas)} ligas")
 
@@ -228,7 +231,7 @@ def carregar_dados(ligas_selecionadas, filtro_value, filtro_prob, mostrar_todos)
 
             if isinstance(jogos, list):
                 for jogo in jogos:
-                    if jogo['match_status'] not in ["", "Not Started", "NS"]: continue # ACEITA MAIS STATUS
+                    if jogo['match_status'] not in ["", "Not Started", "NS"]: continue
                     p05, p15, p25, btts, p_casa, p_empate, p_fora, pos_home, pos_away, odd, value = calcular_prob_poisson(
                         jogo['match_hometeam_id'], jogo['match_awayteam_id'], league_id,
                         jogo['match_hometeam_name'], jogo['match_awayteam_name'], league_key
@@ -242,11 +245,11 @@ def carregar_dados(ligas_selecionadas, filtro_value, filtro_prob, mostrar_todos)
                     
                     todos_jogos.append({
                         "Liga": nome_liga, "Data": datetime.strptime(jogo['match_date'], "%Y-%m-%d").strftime("%d/%m/%Y"),
-                        "Pos": pos_home, "Casa": jogo['match_hometeam_name'],
-                        "Pos": pos_away, "Fora": jogo['match_awayteam_name'],
+                        "PosCasa": pos_home, "Casa": jogo['match_hometeam_name'],
+                        "PosFora": pos_away, "Fora": jogo['match_awayteam_name'],
                         "Odd 1.5": odd, "Prob 0.5HT": p05, "Prob 1.5FT": p15, "Prob 2.5FT": p25,
                         "BTTS": btts, "Casa": p_casa, "Empate": p_empate, "Fora": p_fora, "Value": value,
-                        "ValueNum": val_num, "ProbNum": prob_num # PRA ORDENAR
+                        "ValueNum": val_num, "ProbNum": prob_num
                     })
     return pd.DataFrame(todos_jogos)
 
@@ -267,21 +270,22 @@ ligas_ids = [ligas_opcoes[nome] for nome in ligas_selecionadas]
 df = carregar_dados(ligas_ids, filtro_value, filtro_prob, mostrar_todos)
 
 if not df.empty:
-    # BANNER TOP 3 DO DIA
+    # BANNER TOP 3 DO DIA CORRIGIDO
     top3 = df[df['ValueNum'] > 40].sort_values(by='ValueNum', ascending=False).head(3)
     if not top3.empty:
-        st.success(f"🔥 TOP 3 DO DIA - Value > 40%: {top3[['Casa', 'Fora', 'Value']].to_string(index=False)}")
+        top3_text = " | ".join([f"{row['Casa']} x {row['Fora']} - {row['Value']}" for _, row in top3.iterrows()])
+        st.success(f"🔥 TOP 3 DO DIA - Value > 40%: {top3_text}")
 
-    df = df.sort_values(by='ProbNum', ascending=False).head(10) # TOP 10
-    df = df.drop(columns=['ValueNum', 'ProbNum'])
-    st.dataframe(df, use_container_width=True)
+    df = df.sort_values(by='ProbNum', ascending=False).head(10)
+    df_display = df.drop(columns=['ValueNum', 'ProbNum'])
+    st.dataframe(df_display, use_container_width=True)
     
     col1, col2 = st.columns(2)
     with col1:
-        pdf_buffer = gerar_pdf_buffer(df)
+        pdf_buffer = gerar_pdf_buffer(df_display)
         st.download_button("📥 Baixar PDF", data=pdf_buffer, file_name=f"Relatorio_Analisador_{VERSAO}_{datetime.now().strftime('%d%m%Y')}.pdf", mime="application/pdf", use_container_width=True)
     with col2:
-        csv_buffer = gerar_csv_buffer(df)
+        csv_buffer = gerar_csv_buffer(df_display)
         st.download_button("📊 Exportar CSV", data=csv_buffer, file_name=f"Relatorio_Analisador_{VERSAO}_{datetime.now().strftime('%d%m%Y')}.csv", mime="text/csv", use_container_width=True)
 else:
     st.warning(f"Nenhum jogo encontrado. Marque 'Mostrar todos os jogos' pra ver tudo.")
