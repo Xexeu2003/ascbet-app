@@ -12,51 +12,52 @@ VERSAO = "V26.7.5"
 MARCA_DAGUA = "asc.bet"
 
 st.set_page_config(page_title=f"Analisador asc.bet {VERSAO}", layout="wide")
-st.title(f"Analisador asc.bet {VERSAO}")
-st.caption("Relatório TOP 20 com Probabilidade 1.5FT")
+st.title(f"Relatorio Analisador asc.bet {VERSAO} - TOP 20")
 
 # ============================================
-# 1. COLE AQUI OS DADOS DO ANALISADOR
-# Formato: Lista de Dicionarios
+# DADOS DA SUA PRINT - 05/08/2026
 # ============================================
 DADOS_EXEMPLO = [
+    # BRASILEIRAO SERIE A
+    {"Liga": "BRASILEIRAO SERIE A", "Data": "05/08/2026", "Casa": "Palmeiras", "Fora": "Flamengo", "Prob 0.5FT": "95%", "Prob 1.5FT": "82%", "Prob 2.5FT": "55%"},
+    {"Liga": "BRASILEIRAO SERIE A", "Data": "05/08/2026", "Casa": "Sao Paulo", "Fora": "Corinthians", "Prob 0.5FT": "93%", "Prob 1.5FT": "78%", "Prob 2.5FT": "49%"},
+    
+    # ELITESERIEN
     {"Liga": "ELITESERIEN", "Data": "05/08/2026", "Casa": "Bodo/Glimt", "Fora": "Estrela Vermelha", "Prob 0.5FT": "92%", "Prob 1.5FT": "75%", "Prob 2.5FT": "45%"},
+    
+    # K-LEAGUE 1
+    {"Liga": "K-LEAGUE 1", "Data": "05/08/2026", "Casa": "Ulsan HD", "Fora": "Jeonbuk", "Prob 0.5FT": "70%", "Prob 1.5FT": "45%", "Prob 2.5FT": "18%"},
+    
+    # LIGA PORTUGAL
     {"Liga": "LIGA PORTUGAL", "Data": "05/08/2026", "Casa": "FC Porto", "Fora": "Arouca", "Prob 0.5FT": "88%", "Prob 1.5FT": "69%", "Prob 2.5FT": "38%"},
     {"Liga": "LIGA PORTUGAL", "Data": "05/08/2026", "Casa": "Santa Clara", "Fora": "Nacional", "Prob 0.5FT": "85%", "Prob 1.5FT": "64%", "Prob 2.5FT": "32%"},
-    {"Liga": "BRASILEIRAO SERIE A", "Data": "05/08/2026", "Casa": "Palmeiras", "Fora": "Flamengo", "Prob 0.5FT": "95%", "Prob 1.5FT": "82%", "Prob 2.5FT": "55%"}, # VERDE
-    {"Liga": "BRASILEIRAO SERIE A", "Data": "05/08/2026", "Casa": "Sao Paulo", "Fora": "Corinthians", "Prob 0.5FT": "93%", "Prob 1.5FT": "78%", "Prob 2.5FT": "49%"}, # AMARELO
-    {"Liga": "K-LEAGUE 1", "Data": "05/08/2026", "Casa": "Ulsan HD", "Fora": "Jeonbuk", "Prob 0.5FT": "70%", "Prob 1.5FT": "45%", "Prob 2.5FT": "18%"},
 ]
 # ============================================
 
-
 def get_cor_prob(prob_str):
-    """ALTERACAO 3: Regra de cor: >=80 Verde, 76-79 Amarelo, <=75 Preto"""
+    """Regra: >=80 Verde, 76-79 Amarelo, <=75 Preto"""
     try:
         valor = int(str(prob_str).replace('%', ''))
     except:
         return colors.black, colors.white
 
     if valor >= 80:
-        return colors.HexColor("#0F5132"), colors.HexColor("#D1E7DD") # Texto Verde + Fundo Verde Claro
+        return colors.HexColor("#0F5132"), colors.HexColor("#D1E7DD") # Verde
     elif valor > 75:
-        return colors.HexColor("#664D03"), colors.HexColor("#FFF3CD") # Texto Amarelo + Fundo Amarelo Claro
+        return colors.HexColor("#664D03"), colors.HexColor("#FFF3CD") # Amarelo
     else:
         return colors.black, colors.white
 
-
 def adicionar_marca_dagua(canvas, doc):
-    """ALTERACAO 2: Marca d'agua centralizada em todas as paginas"""
+    """Marca d'agua centralizada"""
     canvas.saveState()
     canvas.setFont("Helvetica-Bold", 100)
     canvas.setFillColor(colors.HexColor("#E5E5E5"))
-    canvas.setFillAlpha(0.05) # Transparencia
+    canvas.setFillAlpha(0.05)
     canvas.drawCentredString(landscape(A4)[0] / 2.0, landscape(A4)[1] / 2.0, MARCA_DAGUA)
     canvas.restoreState()
 
-
 def gerar_pdf_buffer(df):
-    """Gera o PDF em memoria para download"""
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=1*cm, leftMargin=1*cm, topMargin=1.5*cm, bottomMargin=1.5*cm)
     
@@ -69,7 +70,7 @@ def gerar_pdf_buffer(df):
     elementos.append(Paragraph(f"Relatorio Analisador asc.bet {VERSAO} - TOP 20", styles['Titulo']))
     elementos.append(Paragraph(f"Gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')}", styles['SubTitulo']))
 
-    # ALTERACAO 1: Agrupa por Liga
+    # Agrupa por Liga
     for liga, grupo in df.groupby('Liga'):
         elementos.append(Paragraph(f"LIGA: {liga}", styles['LigaTitulo']))
 
@@ -92,7 +93,7 @@ def gerar_pdf_buffer(df):
             ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor("#F7FAFC")])
         ])
 
-        # Aplica cor em todas as colunas de Prob
+        # Aplica cor nas 3 colunas de Prob
         colunas_prob_idx = [3, 4, 5]
         for i in range(1, len(dados_tabela)):
             for col_idx in colunas_prob_idx:
@@ -133,4 +134,4 @@ if not df.empty:
         use_container_width=True
     )
 else:
-    st.warning("Nenhum dado para gerar relatorio. Cole os dados em DADOS_EXEMPLO.")
+    st.warning("Nenhum dado para gerar relatorio.")
