@@ -13,7 +13,7 @@ st.set_page_config(page_title="Analisador asc.bet FREE", layout="wide")
 
 ODDS_API_KEY = "7779b153071a617ec6767463223c2eb1"
 
-# TRADUÇÃO DAS LIGAS PRA FICAR BONITO NO PDF
+# TRADUÇÃO DAS LIGAS
 NOME_LIGAS = {
     "soccer_brazil_serie_a": "BRASILEIRÃO SÉRIE A",
     "soccer_brazil_serie_b": "BRASILEIRÃO SÉRIE B",
@@ -40,28 +40,18 @@ def buscar_jogos():
     erros = []
     for sport_key in SPORTS:
         url = f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds"
-        params = {
-            "apiKey": ODDS_API_KEY, 
-            "regions": "eu", 
-            "markets": "totals", 
-            "oddsFormat": "decimal", 
-            "dateFormat": "iso"
-        }
+        params = {"apiKey": ODDS_API_KEY, "regions": "eu", "markets": "totals", "oddsFormat": "decimal", "dateFormat": "iso"}
         r = requests.get(url, params=params, timeout=20)
-        
         credits_used = r.headers.get('x-requests-used')
-        if credits_used: 
-            st.session_state.credits = 500 - int(credits_used)
-            
+        if credits_used: st.session_state.credits = 500 - int(credits_used)
         if r.status_code != 200:
             erros.append(f"{NOME_LIGAS[sport_key]}: {r.json().get('message', 'Erro')}")
             continue
-                
         for item in r.json():
             jogos.append({
                 "id": item["id"], 
                 "league_key": sport_key,
-                "league": NOME_LIGAS[sport_key], # NOME TRADUZIDO
+                "league": NOME_LIGAS[sport_key],
                 "home": item["home_team"], 
                 "away": item["away_team"],
                 "date": item["commence_time"], 
@@ -82,14 +72,10 @@ def calcular_poisson(jogos):
         resultados.append({
             "Liga": jogo["league"], 
             "Jogo": f"{jogo['home']} x {jogo['away']}",
-            "Data": jogo["date"][:10], 
-            "Hora": jogo["date"][11:16],
-            "Prob 0.5HT %": prob_05ht, 
-            "Prob 1.5FT %": prob_15ft, 
-            "Prob 2.5FT %": prob_25ft, 
-            "BTTS %": btts,
-            "Value %": value, 
-            "Sinal": "GREEN" if value > 5 else "RED"
+            "Data": jogo["date"][:10], "Hora": jogo["date"][11:16],
+            "Prob 0.5HT %": prob_05ht, "Prob 1.5FT %": prob_15ft, 
+            "Prob 2.5FT %": prob_25ft, "BTTS %": btts,
+            "Value %": value, "Sinal": "GREEN" if value > 5 else "RED"
         })
     random.seed()
     return pd.DataFrame(resultados)
@@ -103,7 +89,7 @@ def gerar_pdf(df):
     # TITULO
     c.setFont("Helvetica-Bold", 18)
     c.setFillColor(colors.HexColor("#0D47A1"))
-    c.drawCentredString(width / 2, y, f"Relatorio Analisador asc.bet V26.16.6 - AO VIVO")
+    c.drawCentredString(width / 2, y, f"Relatorio Analisador asc.bet V26.16.7 - AO VIVO")
     y -= 15
     c.setFont("Helvetica-Oblique", 8)
     c.setFillColor(colors.grey)
@@ -114,16 +100,8 @@ def gerar_pdf(df):
         df_liga = df[df['Liga'] == liga].sort_values('Value %', ascending=False).head(10)
         if len(df_liga) == 0: continue
         
-        # FAIXA AZUL COM NOME DA LIGA - IGUAL AO ASC.BET
-        c.setFillColor(colors.HexColor("#1A237E"))
-        c.rect(20, y-15, width-40, 18, fill=1, stroke=0) # Retangulo azul
-        c.setFont("Helvetica-Bold", 11)
-        c.setFillColor(colors.white)
-        c.drawString(25, y-3, f"{liga}") # NOME DA LIGA AQUI
-        y -= 20
-        
-        # TABELA
-        data = [['Data', 'Hora', 'Jogo', 'Odd 1.5', 'Prob 0.5HT', 'Prob 1.5FT', 
+        # CABEÇALHO COM NOME DA LIGA NA COLUNA JOGO
+        data = [['Data', 'Hora', f'JOGO - {liga}', 'Odd 1.5', 'Prob 0.5HT', 'Prob 1.5FT', 
                  'Prob 2.5FT', 'BTTS', 'Value']]
         
         for index, row in df_liga.iterrows():
@@ -135,12 +113,13 @@ def gerar_pdf(df):
         
         table = Table(data, colWidths=[50,35,170,40,55,55,55,40,45])
         table.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1A237E")),
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1A237E")), # Faixa azul
             ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
             ('ALIGN', (0,0), (-1,-1), 'CENTER'), 
-            ('ALIGN', (2,1), (2,-1), 'LEFT'), # Jogo esquerda
+            ('ALIGN', (2,0), (2,-1), 'LEFT'), # Jogo e Nome da Liga esquerda
             ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'), 
-            ('FONTSIZE', (0,0), (-1,0), 7),
+            ('FONTNAME', (2,0), (2,0), 'Helvetica-Bold'), # Liga em Bold
+            ('FONTSIZE', (0,0), (-1,0), 7.5),
             ('FONTSIZE', (0,1), (-1,-1), 7), 
             ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
             ('BACKGROUND', (0,1), (-1,-1), colors.white),
@@ -148,17 +127,18 @@ def gerar_pdf(df):
             ('BACKGROUND', (-1,1), (-1,-1), colors.HexColor("#A5D6A7")), # Value
             ('TEXTCOLOR', (-1,1), (-1,-1), colors.HexColor("#1B5E20")),
             ('FONTNAME', (-1,1), (-1,-1), 'Helvetica-Bold'),
+            ('SPAN', (2,0), (-1,0)), # JUNTA TODAS COLUNAS DO CABEÇALHO
+            ('ALIGN', (2,0), (-1,0), 'LEFT'), # Nome da liga alinhado esquerda
         ]))
         
         table.wrapOn(c, width, height)
         table.drawOn(c, 20, y - len(data)*14)
-        y -= len(data)*14 + 30
+        y -= len(data)*14 + 20
         
-        if y < 150: # Quebra de página
+        if y < 150:
             c.showPage()
             y = height - 50
     
-    # RODAPÉ
     c.setFont("Helvetica-Oblique", 8)
     c.setFillColor(colors.grey)
     c.drawString(30, 30, "Gerado por Analisador asc.bet FREE - The Odds API")
@@ -167,16 +147,14 @@ def gerar_pdf(df):
     return buffer
 
 # --- INTERFACE ---
-st.title("Analisador asc.bet V26.16.6 AO VIVO")
+st.title("Analisador asc.bet V26.16.7 AO VIVO")
 col1, col2, col3 = st.columns(3)
-with col1: 
-    st.metric("Creditos The Odds API", f"{st.session_state.credits}/500")
+with col1: st.metric("Creditos The Odds API", f"{st.session_state.credits}/500")
 with col2:
     if st.button("🔄 Buscar Odds AO VIVO"):
         st.cache_data.clear()
         st.rerun()
-with col3: 
-    min_value = st.slider("Filtro Value Minimo %", 0, 20, 5)
+with col3: min_value = st.slider("Filtro Value Minimo %", 0, 20, 5)
 
 st.divider()
 jogos, erros = buscar_jogos()
@@ -192,7 +170,6 @@ if len(jogos) > 0:
     
     st.success(f"{len(df)} SINAIS GREEN ENCONTRADOS")
     
-    # FILTRO POR LIGA
     ligas = ['Todas'] + list(df['Liga'].unique())
     liga_filtro = st.selectbox("Filtrar por Liga", ligas)
     if liga_filtro != 'Todas':
@@ -204,6 +181,6 @@ if len(jogos) > 0:
     
     if len(df) > 0:
         pdf = gerar_pdf(df)
-        st.download_button("📄 Baixar PDF COM LIGA", data=pdf, file_name="Relatorio_ascbet_AOVIVO.pdf", mime="application/pdf")
+        st.download_button("📄 Baixar PDF V26.16.7", data=pdf, file_name="Relatorio_ascbet_AOVIVO.pdf", mime="application/pdf")
 else:
     st.warning("Nenhum jogo encontrado. Tente novamente em 5 min.")
