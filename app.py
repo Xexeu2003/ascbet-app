@@ -13,7 +13,6 @@ st.set_page_config(page_title="Analisador asc.bet THEODDS", layout="wide")
 
 ODDS_API_KEY = "7779b153071a617ec6767463223c2eb1"
 
-# LIGAS DA THEODDS - AGORA SIM TEM BR E MLS
 LIGAS_ODDS = {
     "soccer_brazil_campeonato": "BRASILEIRÃO SÉRIE A",
     "soccer_brazil_serie_b": "BRASILEIRÃO SÉRIE B",
@@ -22,7 +21,6 @@ LIGAS_ODDS = {
     "soccer_norway_eliteserien": "ELITESERIEN - NORUEGA"
 }
 
-# MEDIA DE GOLS POR LIGA - USAMOS PRA CALCULAR SEM GASTAR CREDITO
 MEDIA_GOLS_LIGA = {
     "soccer_brazil_campeonato": 2.65,
     "soccer_brazil_serie_b": 2.15,
@@ -35,7 +33,7 @@ def poisson(k, lamb):
     return (math.exp(-lamb) * lamb**k) / math.factorial(k)
 
 def calcular_prob_15_por_liga(media_gols):
-    lamb_total = media_gols # Usamos a média da liga como lambda
+    lamb_total = media_gols
     p0 = poisson(0, lamb_total)
     p1 = poisson(1, lamb_total)
     prob_15 = (1 - p0 - p1) * 100
@@ -72,38 +70,48 @@ def buscar_jogos_odds():
         prob_base = calcular_prob_15_por_liga(MEDIA_GOLS_LIGA[liga_id])
 
         for item in lista_jogos:
-            # Pega a linha de 1.5 gols
-            for market in item.get('bookmakers', [{}])[0].get('markets', []):
-                if market['key'] == 'totals':
-                    for outcome in market['outcomes']:
-                        if outcome['point'] == 1.5 and outcome['name'] == 'Over':
-                            odd_over_15 = outcome['price']
-                            prob_implicita = round(100 / odd_over_15, 1)
-                            value = prob_base - prob_implicita
-                            
-                            dt = datetime.fromisoformat(item['commence_time'].replace('Z',''))
-                            jogos.append({
-                                "Liga": nome_liga,
-                                "Jogo": f"{item['home_team']} x {item['away_team']}",
-                                "Data": dt.strftime("%d/%m"),
-                                "Hora": dt.strftime("%H:%M"),
-                                "Odd Over 1.5": odd_over_15,
-                                "Prob Modelo %": prob_base,
-                                "Prob Implicita %": prob_implicita,
-                                "Value %": round(value, 1),
-                                "Sinal": "GREEN" if value > 5 else "RED"
-                            })
+            for book in item.get('bookmakers', []):
+                for market in book.get('markets', []):
+                    if market['key'] == 'totals':
+                        for outcome in market['outcomes']:
+                            if outcome['point'] == 1.5 and outcome['name'] == 'Over':
+                                odd_over_15 = outcome['price']
+                                prob_implicita = round((1 / odd_over_15) * 100, 1)
+                                value = prob_base - prob_implicita
+                                
+                                dt = datetime.fromisoformat(item['commence_time'].replace('Z',''))
+                                jogos.append({
+                                    "Liga": nome_liga,
+                                    "Jogo": f"{item['home_team']} x {item['away_team']}",
+                                    "Data": dt.strftime("%d/%m"),
+                                    "Hora": dt.strftime("%H:%M"),
+                                    "Odd Over 1.5": odd_over_15,
+                                    "Prob Modelo %": prob_base,
+                                    "Prob Implicita %": prob_implicita,
+                                    "Value %": round(value, 1),
+                                    "Sinal": "GREEN" if value > 0 else "RED" # MUDEI PRA > 0
+                                })
     
     log_erros.append(f"TOTAL DE REQUISICOES USADAS: {total_req}/500")
     return pd.DataFrame(jogos), log_erros
 
 def gerar_pdf(df):
     buffer = BytesIO(); c = canvas.Canvas(buffer, pagesize=A4); width, height = A4; y = height - 50
-    c.setFont("Helvetica-Bold", 18); c.drawCentredString(width / 2, y, f"Relatorio asc.bet V26.16.17 - THEODDS")
+    c.setFont("Helvetica-Bold", 18); c.drawCentredString(width / 2, y, f"Relatorio asc.bet V26.16.18 - THEODDS")
+    y -= 30
+    for liga in df['Liga'].unique():
+        df_liga = df[df['Liga'] == liga].sort_values('Value %', ascending=False).head(15)
+        data = [['Data', 'Hora', f'JOGO - {liga}', 'Odd', 'Prob Mod', 'Value']]
+        for index, row in df_liga.iterrows():
+            data.append([row['Data'], row['Hora'], row['Jogo'][:35], row['Odd Over 1.5'], f"{row['Prob Modelo %']}%", f"{row['Value %']}%"])
+        table = Table(data, colWidths=[40,35,200,40,50,40])
+        table.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1A237E")), ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke), ('GRID', (0,0), (-1,-1), 0.5, colors.grey)]))
+        table.wrapOn(c, width, height); table.drawOn(c, 20, y - len(data)*14); y -= len(data)*14 + 20
+        if y < 150: c.showPage(); y = height - 50
     c.save(); buffer.seek(0); return buffer
 
-st.title("Analisador asc.bet V26.16.17 - THEODDS API FREE")
-st.success("ATENÇÃO: Usando TheOdds API. Agora tem BR A/B e MLS. Limite 500 req/mes.")
+st.title("Analisador asc.bet V26.16.18 - THEODDS API FREE")
+st.success("ATENÇÃO: BR A/B e MLS liberados. Limite 500 req/mes.")
 
 if st.button("🔄 Buscar Odds REAIS"):
     st.cache_data.clear(); st.rerun()
@@ -114,9 +122,15 @@ with st.expander("📋 Log de Status da API", expanded=True):
     for e in erros: st.code(e)
 
 if len(jogos_df) > 0:
-    df = jogos_df[jogos_df['Sinal'] == 'GREEN'].sort_values('Value %', ascending=False)
-    st.success(f"{len(df)} SINAIS GREEN ENCONTRADOS")
+    min_value = st.slider("Filtro Value Minimo %", -10, 20, 0) # COMEÇA EM 0
+    
+    df = jogos_df[jogos_df['Value %'] >= min_value].sort_values('Value %', ascending=False)
+    
+    st.success(f"{len(df)} JOGOS ENCONTRADOS | {len(df[df['Sinal']=='GREEN'])} SINAIS GREEN")
     st.dataframe(df, use_container_width=True)
-    st.download_button("📄 Baixar PDF", data=gerar_pdf(df), file_name="Relatorio_THEODDS.pdf")
+    
+    if len(df[df['Sinal']=='GREEN']) > 0:
+        pdf = gerar_pdf(df[df['Sinal']=='GREEN'])
+        st.download_button("📄 Baixar PDF SINAIS GREEN", data=pdf, file_name=f"Relatorio_GREEN_{datetime.now().strftime('%d%m%Y')}.pdf")
 else:
-    st.error("Nenhum sinal GREEN. Veja o Log acima.")
+    st.error("Nenhum jogo encontrado. Veja o Log acima.")
