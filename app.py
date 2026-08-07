@@ -49,7 +49,7 @@ def buscar_jogos_odds():
         url = f"https://api.the-odds-api.com/v4/sports/{liga_id}/odds"
         params = {
             "apiKey": ODDS_API_KEY,
-            "regions": "us",
+            "regions": "us,uk,eu", # ADICIONEI MAIS REGIOES PRA TER MAIS ODDS
             "markets": "totals",
             "oddsFormat": "decimal",
             "dateFormat": "iso"
@@ -61,7 +61,7 @@ def buscar_jogos_odds():
             log_erros.append(f"{nome_liga}: ERRO 429 - Limite 500/mes atingido")
             break
         if r.status_code!= 200:
-            log_erros.append(f"{nome_liga}: ERRO {r.status_code}")
+            log_erros.append(f"{nome_liga}: ERRO {r.status_code} - {r.text[:50]}")
             continue
 
         lista_jogos = r.json()
@@ -74,7 +74,8 @@ def buscar_jogos_odds():
                 for market in book.get('markets', []):
                     if market['key'] == 'totals':
                         for outcome in market['outcomes']:
-                            if outcome['point'] == 1.5 and outcome['name'] == 'Over':
+                            # CORREÇÃO: CONVERTER POINT PRA FLOAT
+                            if float(outcome['point']) == 1.5 and outcome['name'] == 'Over':
                                 odd_over_15 = outcome['price']
                                 prob_implicita = round((1 / odd_over_15) * 100, 1)
                                 value = prob_base - prob_implicita
@@ -85,11 +86,12 @@ def buscar_jogos_odds():
                                     "Jogo": f"{item['home_team']} x {item['away_team']}",
                                     "Data": dt.strftime("%d/%m"),
                                     "Hora": dt.strftime("%H:%M"),
+                                    "Casa": book['title'], # ADICIONEI CASA DE APOSTA
                                     "Odd Over 1.5": odd_over_15,
                                     "Prob Modelo %": prob_base,
                                     "Prob Implicita %": prob_implicita,
                                     "Value %": round(value, 1),
-                                    "Sinal": "GREEN" if value > 0 else "RED" # MUDEI PRA > 0
+                                    "Sinal": "GREEN" if value > 0 else "RED"
                                 })
     
     log_erros.append(f"TOTAL DE REQUISICOES USADAS: {total_req}/500")
@@ -97,20 +99,20 @@ def buscar_jogos_odds():
 
 def gerar_pdf(df):
     buffer = BytesIO(); c = canvas.Canvas(buffer, pagesize=A4); width, height = A4; y = height - 50
-    c.setFont("Helvetica-Bold", 18); c.drawCentredString(width / 2, y, f"Relatorio asc.bet V26.16.18 - THEODDS")
+    c.setFont("Helvetica-Bold", 18); c.drawCentredString(width / 2, y, f"Relatorio asc.bet V26.16.19 - THEODDS")
     y -= 30
     for liga in df['Liga'].unique():
         df_liga = df[df['Liga'] == liga].sort_values('Value %', ascending=False).head(15)
-        data = [['Data', 'Hora', f'JOGO - {liga}', 'Odd', 'Prob Mod', 'Value']]
+        data = [['Data', 'Hora', f'JOGO - {liga}', 'Casa', 'Odd', 'Value']]
         for index, row in df_liga.iterrows():
-            data.append([row['Data'], row['Hora'], row['Jogo'][:35], row['Odd Over 1.5'], f"{row['Prob Modelo %']}%", f"{row['Value %']}%"])
-        table = Table(data, colWidths=[40,35,200,40,50,40])
+            data.append([row['Data'], row['Hora'], row['Jogo'][:25], row['Casa'][:10], row['Odd Over 1.5'], f"{row['Value %']}%"])
+        table = Table(data, colWidths=[40,35,150,60,40,40])
         table.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1A237E")), ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke), ('GRID', (0,0), (-1,-1), 0.5, colors.grey)]))
         table.wrapOn(c, width, height); table.drawOn(c, 20, y - len(data)*14); y -= len(data)*14 + 20
         if y < 150: c.showPage(); y = height - 50
     c.save(); buffer.seek(0); return buffer
 
-st.title("Analisador asc.bet V26.16.18 - THEODDS API FREE")
+st.title("Analisador asc.bet V26.16.19 - THEODDS API FREE")
 st.success("ATENÇÃO: BR A/B e MLS liberados. Limite 500 req/mes.")
 
 if st.button("🔄 Buscar Odds REAIS"):
@@ -122,14 +124,15 @@ with st.expander("📋 Log de Status da API", expanded=True):
     for e in erros: st.code(e)
 
 if len(jogos_df) > 0:
-    min_value = st.slider("Filtro Value Minimo %", -10, 20, 0) # COMEÇA EM 0
+    min_value = st.slider("Filtro Value Minimo %", -20, 20, -5) # COMEÇA EM -5 PRA MOSTRAR TUDO
     
     df = jogos_df[jogos_df['Value %'] >= min_value].sort_values('Value %', ascending=False)
     
-    st.success(f"{len(df)} JOGOS ENCONTRADOS | {len(df[df['Sinal']=='GREEN'])} SINAIS GREEN")
+    qtd_green = len(df[df['Sinal']=='GREEN'])
+    st.success(f"{len(df)} JOGOS ENCONTRADOS | {qtd_green} SINAIS GREEN")
     st.dataframe(df, use_container_width=True)
     
-    if len(df[df['Sinal']=='GREEN']) > 0:
+    if qtd_green > 0:
         pdf = gerar_pdf(df[df['Sinal']=='GREEN'])
         st.download_button("📄 Baixar PDF SINAIS GREEN", data=pdf, file_name=f"Relatorio_GREEN_{datetime.now().strftime('%d%m%Y')}.pdf")
 else:
