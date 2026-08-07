@@ -12,21 +12,25 @@ from reportlab.platypus import Table, TableStyle
 st.set_page_config(page_title="Analisador asc.bet THEODDS PRO", layout="wide")
 ODDS_API_KEY = "7779b153071a617ec6767463223c2eb1"
 
+# LIGAS MENORES QUE FICAM LIBERADAS NO FREE
 LIGAS_ODDS = {
-    "soccer_brazil_campeonato": "BRASILEIRÃO SÉRIE A",
-    "soccer_brazil_serie_b": "BRASILEIRÃO SÉRIE B",
-    "soccer_sweden_allsvenskan": "ALLSVENSKAN - SUÉCIA",
-    # "soccer_usa_mls": "MLS - ESTADOS UNIDOS", # BLOQUEADO NO FREE
-    # "soccer_norway_eliteserien": "ELITESERIEN - NORUEGA" # BLOQUEADO NO FREE
+    "soccer_iceland_urvalsdeild": "ÚRVALLSDEILD - ISLÂNDIA",
+    "soccer_finland_veikkausliiga": "VEIKKAUSLIIGA - FINLÂNDIA", 
+    "soccer_ireland_premier": "PREMIER DIVISION - IRLANDA",
+    "soccer_malta_premier_league": "PREMIER LEAGUE - MALTA",
+    "soccer_denmark_superliga": "SUPERLIGA - DINAMARCA"
 }
 
+# MÉDIA DE GOLS 2025 DAS LIGAS MENORES
 MEDIA_GOLS_LIGA = {
-    "soccer_brazil_campeonato": 2.65, "soccer_brazil_serie_b": 2.15,
-    "soccer_sweden_allsvenskan": 2.85
+    "soccer_iceland_urvalsdeild": 3.40, "soccer_finland_veikkausliiga": 2.95,
+    "soccer_ireland_premier": 2.75, "soccer_malta_premier_league": 3.15,
+    "soccer_denmark_superliga": 2.90
 }
 BTTS_MEDIA_LIGA = {
-    "soccer_brazil_campeonato": 52, "soccer_brazil_serie_b": 45,
-    "soccer_sweden_allsvenskan": 55
+    "soccer_iceland_urvalsdeild": 62, "soccer_finland_veikkausliiga": 58,
+    "soccer_ireland_premier": 54, "soccer_malta_premier_league": 60,
+    "soccer_denmark_superliga": 56
 }
 
 def poisson(k, lamb): return (math.exp(-lamb) * lamb**k) / math.factorial(k)
@@ -47,7 +51,7 @@ def buscar_jogos_odds(ligas_selecionadas):
         total_req += 1
         
         if r.status_code == 422:
-            log_erros.append(f"{nome_liga}: ERRO 422 - Liga bloqueada no plano FREE")
+            log_erros.append(f"{nome_liga}: ERRO 422 - Liga bloqueada")
             continue
         if r.status_code == 429:
             log_erros.append(f"{nome_liga}: ERRO 429 - Limite da API")
@@ -100,7 +104,7 @@ def gerar_pdf(df):
     y = height - 50
     c.setFont("Helvetica-Bold", 20)
     c.setFillColor(colors.HexColor("#0D47A1"))
-    c.drawCentredString(width / 2, y, f"RELATORIO ASC.BET V26.16.25")
+    c.drawCentredString(width / 2, y, f"RELATORIO ASC.BET V26.16.26")
     y -= 20
     c.setFont("Helvetica", 9)
     c.setFillColor(colors.grey)
@@ -159,13 +163,13 @@ def gerar_pdf(df):
     return buffer
 
 # --- INTERFACE ---
-st.title("Analisador asc.bet V26.16.25 - THEODDS PRO MAX")
-st.success("MERCADOS: Over 1.5, Over 2.5 e BTTS Sim | DADOS 100% REAIS")
-st.warning("Obs: MLS e Noruega bloqueadas no plano FREE da TheOdds")
+st.title("Analisador asc.bet V26.16.26 - THEODDS FREE TEST")
+st.success("MERCADOS: Over 1.5, Over 2.5 e BTTS Sim | LIGAS MENORES FREE")
+st.warning("Testando ligas que ficam liberadas no plano FREE: Islândia, Finlândia, Irlanda, Malta, Dinamarca")
 
 col1, col2, col3 = st.columns([2,1,1])
 with col1:
-    ligas_sel = st.multiselect("1. Escolher Ligas", options=list(LIGAS_ODDS.values()), default=["BRASILEIRÃO SÉRIE A", "ALLSVENSKAN - SUÉCIA"])
+    ligas_sel = st.multiselect("1. Escolher Ligas", options=list(LIGAS_ODDS.values()), default=["ÚRVALLSDEILD - ISLÂNDIA", "VEIKKAUSLIIGA - FINLÂNDIA"])
 with col2:
     min_value = st.slider("2. Filtro Value Minimo %", -20, 20, -20)
 with col3:
@@ -187,7 +191,6 @@ with st.expander("📋 Log de Status da API", expanded=True):
         else:
             st.info(e)
 
-# CORREÇÃO: TRATAMENTO SE DF ESTIVER VAZIO
 if len(jogos_df) > 0:
     df_filtrado = jogos_df[jogos_df['Value %'] >= min_value].sort_values('Value %', ascending=False)
     qtd_green = len(df_filtrado[df_filtrado['Sinal']=='GREEN'])
@@ -209,4 +212,4 @@ if len(df_filtrado) > 0:
         pdf = gerar_pdf(df_filtrado[df_filtrado['Sinal']=='GREEN'])
         st.download_button("📄 BAIXAR PDF GREEN PROFISSIONAL", data=pdf, file_name=f"GREEN_{datetime.now().strftime('%d%m%Y_%H%M')}.pdf", type="primary", use_container_width=True)
 else:
-    st.warning(f"Nenhum jogo encontrado com Value >= {min_value}%. Tente BR A, Série B ou Suécia.")
+    st.warning(f"Nenhum jogo encontrado com Value >= {min_value}%. Tente abaixar mais o filtro.")
