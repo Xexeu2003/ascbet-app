@@ -29,17 +29,10 @@ MEDIA_GOLS_LIGA = {
     "soccer_norway_eliteserien": 3.25
 }
 
-def poisson(k, lamb):
-    return (math.exp(-lamb) * lamb**k) / math.factorial(k)
-
+def poisson(k, lamb): return (math.exp(-lamb) * lamb**k) / math.factorial(k)
 def calcular_prob_15_por_liga(media_gols):
     lamb_total = media_gols
-    p0 = poisson(0, lamb_total)
-    p1 = poisson(1, lamb_total)
-    return round((1 - p0 - p1) * 100, 1)
-
-def color_value(val):
-    return 'color: #00C853; font-weight: bold' if val > 0 else 'color: #D50000'
+    return round((1 - poisson(0, lamb_total) - poisson(1, lamb_total)) * 100, 1)
 
 @st.cache_data(ttl=1800, show_spinner="Buscando Odds REAIS da TheOdds...")
 def buscar_jogos_odds(ligas_selecionadas):
@@ -50,13 +43,7 @@ def buscar_jogos_odds(ligas_selecionadas):
     for liga_id in ligas_selecionadas:
         nome_liga = LIGAS_ODDS[liga_id]
         url = f"https://api.the-odds-api.com/v4/sports/{liga_id}/odds"
-        params = {
-            "apiKey": ODDS_API_KEY,
-            "regions": "us,uk,eu",
-            "markets": "totals",
-            "oddsFormat": "decimal",
-            "dateFormat": "iso"
-        }
+        params = {"apiKey": ODDS_API_KEY, "regions": "us,uk,eu", "markets": "totals", "oddsFormat": "decimal", "dateFormat": "iso"}
         r = requests.get(url, params=params)
         total_req += 1
 
@@ -69,7 +56,6 @@ def buscar_jogos_odds(ligas_selecionadas):
 
         lista_jogos = r.json()
         log_erros.append(f"{nome_liga}: Encontrados {len(lista_jogos)} jogos")
-
         prob_base = calcular_prob_15_por_liga(MEDIA_GOLS_LIGA[liga_id])
 
         for item in lista_jogos:
@@ -83,115 +69,56 @@ def buscar_jogos_odds(ligas_selecionadas):
                                 value = prob_base - prob_imp
                                 dt = datetime.fromisoformat(item['commence_time'].replace('Z',''))
                                 jogos.append({
-                                    "Liga": nome_liga,
-                                    "Jogo": f"{item['home_team']} x {item['away_team']}",
-                                    "Data": dt.strftime("%d/%m"),
-                                    "Hora": dt.strftime("%H:%M"),
-                                    "Casa": book['title'],
-                                    "Odd 1.5": odd,
-                                    "Prob Modelo": prob_base,
-                                    "Prob Casa": prob_imp,
-                                    "Value %": round(value, 1),
-                                    "Sinal": "GREEN" if value > 0 else "RED"
+                                    "Liga": nome_liga, "Jogo": f"{item['home_team']} x {item['away_team']}",
+                                    "Data": dt.strftime("%d/%m"), "Hora": dt.strftime("%H:%M"), "Casa": book['title'],
+                                    "Odd 1.5": odd, "Prob Modelo": prob_base, "Prob Casa": prob_imp,
+                                    "Value %": round(value, 1), "Sinal": "GREEN" if value > 0 else "RED"
                                 })
 
     log_erros.append(f"TOTAL REQUISICOES USADAS: {total_req}/500")
     return pd.DataFrame(jogos), log_erros
 
 def gerar_pdf(df):
-    buffer = BytesIO()
-    c = canvas.Canvas(buffer, pagesize=A4)
-    width, height = A4
-    y = height - 50
-
-    # CABEÇALHO
-    c.setFont("Helvetica-Bold", 20)
-    c.setFillColor(colors.HexColor("#0D47A1"))
-    c.drawCentredString(width / 2, y, f"RELATORIO ASC.BET V26.16.21")
-    y -= 20
-    c.setFont("Helvetica", 9)
-    c.setFillColor(colors.grey)
-    c.drawCentredString(width / 2, y, f"Gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')} | Fonte: TheOdds API | Over 1.5FT")
+    buffer = BytesIO(); c = canvas.Canvas(buffer, pagesize=A4); width, height = A4; y = height - 50
+    c.setFont("Helvetica-Bold", 20); c.setFillColor(colors.HexColor("#0D47A1"))
+    c.drawCentredString(width / 2, y, f"RELATORIO ASC.BET V26.16.22")
+    y -= 20; c.setFont("Helvetica", 9); c.setFillColor(colors.grey)
+    c.drawCentredString(width / 2, y, f"Gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')} | Fonte: TheOdds API")
     y -= 30
-
     if len(df) == 0:
-        c.setFont("Helvetica", 12)
-        c.drawString(50, y, "Nenhum sinal GREEN encontrado com o filtro atual.")
+        c.setFont("Helvetica", 12); c.drawString(50, y, "Nenhum sinal GREEN encontrado.")
     else:
-        # SEPARA POR LIGA
         for liga in df['Liga'].unique():
             df_liga = df[df['Liga'] == liga].sort_values('Value %', ascending=False)
-
-            # TITULO DA LIGA
-            c.setFont("Helvetica-Bold", 14)
-            c.setFillColor(colors.HexColor("#1A237E"))
-            c.drawString(30, y, f"{liga.upper()}")
-            y -= 5
-            c.line(30, y, width-30, y)
-            y -= 20
-
-            # AGRUPA POR DATA
+            c.setFont("Helvetica-Bold", 14); c.setFillColor(colors.HexColor("#1A237E"))
+            c.drawString(30, y, f"{liga.upper()}"); y -= 5; c.line(30, y, width-30, y); y -= 20
             for data_jogo in df_liga['Data'].unique():
                 df_data = df_liga[df_liga['Data'] == data_jogo]
-
-                c.setFont("Helvetica-BoldOblique", 10)
-                c.setFillColor(colors.HexColor("#424242"))
-                c.drawString(35, y, f"DATA: {data_jogo}")
-                y -= 15
-
-                # TABELA
+                c.setFont("Helvetica-BoldOblique", 10); c.setFillColor(colors.HexColor("#424242"))
+                c.drawString(35, y, f"DATA: {data_jogo}"); y -= 15
                 data = [['Hora', 'JOGO', 'CASA', 'ODD', 'P.MOD', 'P.CASA', 'VALUE']]
                 for index, row in df_data.iterrows():
-                    data.append([
-                        row['Hora'], row['Jogo'][:28], row['Casa'][:9],
-                        row['Odd 1.5'], f"{row['Prob Modelo']}%",
-                        f"{row['Prob Casa']}%", f"{row['Value %']}%"
-                    ])
-
+                    data.append([row['Hora'], row['Jogo'][:28], row['Casa'][:9], row['Odd 1.5'], f"{row['Prob Modelo']}%", f"{row['Prob Casa']}%", f"{row['Value %']}%"])
                 table = Table(data, colWidths=[35,155,60,35,40,40,40])
-                table.setStyle(TableStyle([
-                    ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#37474F")),
-                    ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
-                    ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-                    ('ALIGN', (1,1), (1,-1), 'LEFT'),
-                    ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
-                    ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-                    ('FONTSIZE', (0,0), (-1,-1), 8),
-                    ('BACKGROUND', (-1,1), (-1,-1), colors.HexColor("#E8F5E9")),
-                ]))
-                table.wrapOn(c, width, height)
-                table.drawOn(c, 30, y - len(data)*14)
-                y -= len(data)*14 + 15
-
-                if y < 150:
-                    c.showPage()
-                    y = height - 50
-
+                table.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.HexColor("#37474F")), ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke), ('ALIGN', (0,0), (-1,-1), 'CENTER'), ('ALIGN', (1,1), (1,-1), 'LEFT'), ('GRID', (0,0), (-1,-1), 0.5, colors.grey), ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'), ('FONTSIZE', (0,0), (-1,-1), 8)]))
+                table.wrapOn(c, width, height); table.drawOn(c, 30, y - len(data)*14); y -= len(data)*14 + 15
+                if y < 150: c.showPage(); y = height - 50
             y -= 10
-
-    c.save()
-    buffer.seek(0)
-    return buffer
+    c.save(); buffer.seek(0); return buffer
 
 # --- INTERFACE ---
-st.title("Analisador asc.bet V26.16.21 - THEODDS PRO")
+st.title("Analisador asc.bet V26.16.22 - THEODDS PRO")
 st.success("DADOS 100% REAIS: Jogos, Datas, Odds e Casas. Limite 500 req/mes.")
 
 col1, col2, col3 = st.columns([2,1,1])
 with col1:
-    ligas_sel = st.multiselect(
-        "1. Escolher Ligas",
-        options=list(LIGAS_ODDS.values()),
-        default=["BRASILEIRÃO SÉRIE A", "BRASILEIRÃO SÉRIE B", "MLS - ESTADOS UNIDOS"]
-    )
+    ligas_sel = st.multiselect("1. Escolher Ligas", options=list(LIGAS_ODDS.values()), default=["BRASILEIRÃO SÉRIE A", "BRASILEIRÃO SÉRIE B", "MLS - ESTADOS UNIDOS"])
 with col2:
-    min_value = st.slider("2. Filtro Value Minimo %", -20, 20, 0)
+    min_value = st.slider("2. Filtro Value Minimo %", -20, 20, -10) # BAIXEI PRA -10 PRA APARECER JOGO
 with col3:
-    st.write("")
-    st.write("")
+    st.write(""); st.write("")
     if st.button("🔄 BUSCAR DADOS REAIS", type="primary", use_container_width=True):
-        st.cache_data.clear()
-        st.rerun()
+        st.cache_data.clear(); st.rerun()
 
 ligas_ids_sel = [k for k,v in LIGAS_ODDS.items() if v in ligas_sel]
 jogos_df, erros = buscar_jogos_odds(ligas_ids_sel)
@@ -207,23 +134,17 @@ if len(jogos_df) > 0:
 
     col1, col2, col3 = st.columns(3)
     col1.metric("Total de Jogos", len(df))
-    col2.metric("Sinais GREEN", qtd_green, delta=f"{qtd_green} oportunidades")
+    col2.metric("Sinais GREEN", qtd_green)
     col3.metric("Creditos Usados", f"{erros[-1].split(':')[1].strip()}")
 
-    st.dataframe(
-        df.style.applymap(color_value, subset=['Value %']),
-        use_container_width=True,
-        height=500
-    )
+    # CORREÇÃO AQUI: usei.style.map em vez de applymap
+    def highlight_value(val):
+        return f'color: {"#00C853" if val > 0 else "#D50000"}; font-weight: bold'
+    
+    st.dataframe(df.style.map(highlight_value, subset=['Value %']), use_container_width=True, height=500)
 
     if qtd_green > 0:
         pdf = gerar_pdf(df[df['Sinal']=='GREEN'])
-        st.download_button(
-            "📄 BAIXAR PDF SINAIS GREEN",
-            data=pdf,
-            file_name=f"GREEN_{datetime.now().strftime('%d%m%Y_%H%M')}.pdf",
-            type="primary",
-            use_container_width=True
-        )
+        st.download_button("📄 BAIXAR PDF SINAIS GREEN", data=pdf, file_name=f"GREEN_{datetime.now().strftime('%d%m%Y_%H%M')}.pdf", type="primary", use_container_width=True)
 else:
     st.warning("Clique em 'BUSCAR DADOS REAIS' para começar.")
