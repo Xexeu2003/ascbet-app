@@ -15,18 +15,18 @@ ODDS_API_KEY = "7779b153071a617ec6767463223c2eb1"
 LIGAS_ODDS = {
     "soccer_brazil_campeonato": "BRASILEIRÃO SÉRIE A",
     "soccer_brazil_serie_b": "BRASILEIRÃO SÉRIE B",
-    "soccer_usa_mls": "MLS - ESTADOS UNIDOS",
     "soccer_sweden_allsvenskan": "ALLSVENSKAN - SUÉCIA",
-    "soccer_norway_eliteserien": "ELITESERIEN - NORUEGA"
+    # "soccer_usa_mls": "MLS - ESTADOS UNIDOS", # BLOQUEADO NO FREE
+    # "soccer_norway_eliteserien": "ELITESERIEN - NORUEGA" # BLOQUEADO NO FREE
 }
 
 MEDIA_GOLS_LIGA = {
-    "soccer_brazil_campeonato": 2.65, "soccer_brazil_serie_b": 2.15, "soccer_usa_mls": 3.10,
-    "soccer_sweden_allsvenskan": 2.85, "soccer_norway_eliteserien": 3.25
+    "soccer_brazil_campeonato": 2.65, "soccer_brazil_serie_b": 2.15,
+    "soccer_sweden_allsvenskan": 2.85
 }
 BTTS_MEDIA_LIGA = {
-    "soccer_brazil_campeonato": 52, "soccer_brazil_serie_b": 45, "soccer_usa_mls": 58,
-    "soccer_sweden_allsvenskan": 55, "soccer_norway_eliteserien": 60
+    "soccer_brazil_campeonato": 52, "soccer_brazil_serie_b": 45,
+    "soccer_sweden_allsvenskan": 55
 }
 
 def poisson(k, lamb): return (math.exp(-lamb) * lamb**k) / math.factorial(k)
@@ -46,6 +46,9 @@ def buscar_jogos_odds(ligas_selecionadas):
         r = requests.get(url, params=params)
         total_req += 1
         
+        if r.status_code == 422:
+            log_erros.append(f"{nome_liga}: ERRO 422 - Liga bloqueada no plano FREE")
+            continue
         if r.status_code == 429:
             log_erros.append(f"{nome_liga}: ERRO 429 - Limite da API")
             break
@@ -97,7 +100,7 @@ def gerar_pdf(df):
     y = height - 50
     c.setFont("Helvetica-Bold", 20)
     c.setFillColor(colors.HexColor("#0D47A1"))
-    c.drawCentredString(width / 2, y, f"RELATORIO ASC.BET V26.16.24")
+    c.drawCentredString(width / 2, y, f"RELATORIO ASC.BET V26.16.25")
     y -= 20
     c.setFont("Helvetica", 9)
     c.setFillColor(colors.grey)
@@ -156,12 +159,13 @@ def gerar_pdf(df):
     return buffer
 
 # --- INTERFACE ---
-st.title("Analisador asc.bet V26.16.24 - THEODDS PRO MAX")
+st.title("Analisador asc.bet V26.16.25 - THEODDS PRO MAX")
 st.success("MERCADOS: Over 1.5, Over 2.5 e BTTS Sim | DADOS 100% REAIS")
+st.warning("Obs: MLS e Noruega bloqueadas no plano FREE da TheOdds")
 
 col1, col2, col3 = st.columns([2,1,1])
 with col1:
-    ligas_sel = st.multiselect("1. Escolher Ligas", options=list(LIGAS_ODDS.values()), default=["MLS - ESTADOS UNIDOS", "ELITESERIEN - NORUEGA"])
+    ligas_sel = st.multiselect("1. Escolher Ligas", options=list(LIGAS_ODDS.values()), default=["BRASILEIRÃO SÉRIE A", "ALLSVENSKAN - SUÉCIA"])
 with col2:
     min_value = st.slider("2. Filtro Value Minimo %", -20, 20, -20)
 with col3:
@@ -183,9 +187,13 @@ with st.expander("📋 Log de Status da API", expanded=True):
         else:
             st.info(e)
 
-# CORREÇÃO: SEMPRE MOSTRA AS MÉTRICAS E TABELA
-df_filtrado = jogos_df[jogos_df['Value %'] >= min_value].sort_values('Value %', ascending=False) if len(jogos_df) > 0 else pd.DataFrame()
-qtd_green = len(df_filtrado[df_filtrado['Sinal']=='GREEN'])
+# CORREÇÃO: TRATAMENTO SE DF ESTIVER VAZIO
+if len(jogos_df) > 0:
+    df_filtrado = jogos_df[jogos_df['Value %'] >= min_value].sort_values('Value %', ascending=False)
+    qtd_green = len(df_filtrado[df_filtrado['Sinal']=='GREEN'])
+else:
+    df_filtrado = pd.DataFrame()
+    qtd_green = 0
 
 col1, col2, col3 = st.columns(3)
 col1.metric("Total de Jogos", len(df_filtrado))
@@ -201,4 +209,4 @@ if len(df_filtrado) > 0:
         pdf = gerar_pdf(df_filtrado[df_filtrado['Sinal']=='GREEN'])
         st.download_button("📄 BAIXAR PDF GREEN PROFISSIONAL", data=pdf, file_name=f"GREEN_{datetime.now().strftime('%d%m%Y_%H%M')}.pdf", type="primary", use_container_width=True)
 else:
-    st.warning(f"Nenhum jogo encontrado com Value >= {min_value}% nas ligas selecionadas. Tente abaixar o filtro ou trocar a liga.")
+    st.warning(f"Nenhum jogo encontrado com Value >= {min_value}%. Tente BR A, Série B ou Suécia.")
