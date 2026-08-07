@@ -12,194 +12,108 @@ from reportlab.platypus import Table, TableStyle
 
 st.set_page_config(page_title="Analisador asc.bet FREE", layout="wide")
 
-# SUAS CHAVES
-ODDS_API_KEY = "7779b153071a617ec6767463223c2eb1" # 500/mes TheOdds
-FOOTBALL_API_KEY = "a1e4fd8b13622e830db1f983877308e7" # 100/dia API-Football
+FOOTBALL_API_KEY = "a1e4fd8b13622e830db1f983877308e7"
 
-# 6 LIGAS AO VIVO AGORA
+# LIGAS QUE FUNCIONAM NO PLANO FREE - troquei BR e MLS por ligas menores
 LIGAS_IDS = {
-    71: "BRASILEIRÃO SÉRIE A",
-    72: "BRASILEIRÃO SÉRIE B", 
-    253: "MLS - ESTADOS UNIDOS",
-    113: "ALLSVENSKAN - SUÉCIA",
-    103: "ELITESERIEN - NORUEGA",
-    218: "PEPSI DEILD - ISLÂNDIA"
+    218: "PEPSI DEILD - ISLÂNDIA D1",
+    113: "ALLSVENSKAN - SUÉCIA D1",
+    103: "ELITESERIEN - NORUEGA D1",
+    682: "SUPERETTAN - SUÉCIA D2", # NOVA
+    317: "OBOS-LIGAEN - NORUEGA D2", # NOVA
+    237: "URVALSDEILD - ISLÂNDIA D2" # NOVA
 }
 
-# CACHE PRA NÃO ESTOURAR OS 100 CRED
 conn = sqlite3.connect('cache_stats.db', check_same_thread=False)
-conn.execute('''CREATE TABLE IF NOT EXISTS stats 
-                (team_id INT PRIMARY KEY, gf REAL, ga REAL, data TEXT)''')
+conn.execute('''CREATE TABLE IF NOT EXISTS stats (team_id INT PRIMARY KEY, gf REAL, ga REAL, data TEXT)''')
 
 def buscar_stats_cache(time_id):
-    # TENTA CACHE DE 24H
-    res = conn.execute("SELECT gf,ga FROM stats WHERE team_id=? AND data > ?", 
+    res = conn.execute("SELECT gf,ga FROM stats WHERE team_id=? AND data >?", 
                        (time_id, (datetime.now()-timedelta(hours=24)).isoformat())).fetchone()
     if res: return res
-    
-    # BUSCA NA API E GASTA 1 CREDITO - TEMP 2025
     url = f"https://v3.football.api-sports.io/teams/statistics"
     headers = {"x-apisports-key": FOOTBALL_API_KEY}
-    params = {"team": time_id, "season": "2025"} 
-    try:
-        r = requests.get(url, headers=headers, params=params, timeout=10)
-        if r.status_code != 200: return None
-        data = r.json()["response"]
-        jogos = data["fixtures"]["played"]["total"]
-        if jogos == 0: return 1.2, 1.2
-        gf = data["goals"]["for"]["total"]["total"] / jogos
-        ga = data["goals"]["against"]["total"]["total"] / jogos
-        conn.execute("REPLACE INTO stats VALUES (?,?,?,?)", (time_id,gf,ga,datetime.now().isoformat()))
-        conn.commit()
-        return gf, ga
-    except:
-        return None
+    params = {"team": time_id, "season": "2025"}
+    r = requests.get(url, headers=headers, params=params, timeout=10)
+    if r.status_code!= 200: return None
+    data = r.json()["response"]
+    jogos = data["fixtures"]["played"]["total"]
+    if jogos == 0: return 1.2, 1.2
+    gf = data["goals"]["for"]["total"]["total"] / jogos
+    ga = data["goals"]["against"]["total"]["total"] / jogos
+    conn.execute("REPLACE INTO stats VALUES (?,?,?,?)", (time_id,gf,ga,datetime.now().isoformat()))
+    conn.commit()
+    return gf, ga
 
-def poisson(k, lamb):
-    return (math.exp(-lamb) * lamb**k) / math.factorial(k)
-
+def poisson(k, lamb): return (math.exp(-lamb) * lamb**k) / math.factorial(k)
 def calcular_prob_15(gf_casa, ga_fora, gf_fora, ga_casa):
-    lamb_casa = (gf_casa + ga_fora) / 2
-    lamb_fora = (gf_fora + ga_casa) / 2
-    lamb_total = lamb_casa + lamb_fora
-    p0 = poisson(0, lamb_total)
-    p1 = poisson(1, lamb_total)
-    prob_15 = (1 - p0 - p1) * 100
-    return round(prob_15, 1)
+    lamb_total = ((gf_casa + ga_fora) / 2) + ((gf_fora + ga_casa) / 2)
+    return round((1 - poisson(0, lamb_total) - poisson(1, lamb_total)) * 100, 1)
 
-@st.cache_data(ttl=3600, show_spinner="Buscando Dados REAIS... Aguarde")
+@st.cache_data(ttl=3600, show_spinner="Buscando Dados REAIS...")
 def buscar_jogos_reais():
     jogos = []
     log_erros = []
     data_hoje = datetime.now().strftime("%Y-%m-%d")
-    data_7dias = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
+    data_30dias = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d") # AUMENTEI PRA 30 DIAS
     total_req = 0
 
     for liga_id, nome_liga in LIGAS_IDS.items():
-        if total_req >= 90: # TRAVA ANTES DE BATER 100
-            log_erros.append("TRAVA DE SEGURANÇA: Parou em 90 req pra não estourar o limite")
+        if total_req >= 90: 
+            log_erros.append("TRAVA: Parou em 90 req")
             break
 
-        # BUSCAR DE HOJE ATE 7 DIAS PRA TER JOGO - TEMP 2025
         url = f"https://v3.football.api-sports.io/fixtures"
         headers = {"x-apisports-key": FOOTBALL_API_KEY}
-        params = {"league": liga_id, "season": "2025", "from": data_hoje, "to": data_7dias}
+        params = {"league": liga_id, "season": "2025", "from": data_hoje, "to": data_30dias} # 30 DIAS
         r = requests.get(url, headers=headers, params=params)
         total_req += 1
 
         if r.status_code == 429:
-            log_erros.append(f"{nome_liga}: ERRO 429 - Limite 100 req/dia atingido. Reset 21h Manaus")
+            log_erros.append(f"{nome_liga}: ERRO 429 - Limite atingido")
             break
-        if r.status_code != 200:
-            msg = r.json().get('message','Erro desconhecido')
-            log_erros.append(f"{nome_liga}: ERRO {r.status_code} - {msg}")
+        if r.status_code!= 200:
+            log_erros.append(f"{nome_liga}: ERRO {r.status_code}")
             continue
 
         lista_jogos = r.json().get("response", [])
-        log_erros.append(f"{nome_liga}: Encontrados {len(lista_jogos)} jogos nos próximos 7 dias")
+        log_erros.append(f"{nome_liga}: Encontrados {len(lista_jogos)} jogos")
 
-        for item in lista_jogos[:5]: # max 5 por liga pra economizar
+        for item in lista_jogos[:10]:
             if total_req >= 90: break
-            home_id = item["teams"]["home"]["id"]
-            away_id = item["teams"]["away"]["id"]
-            
-            stats_home = buscar_stats_cache(home_id) # gasta 1 req se não tiver cache
-            stats_away = buscar_stats_cache(away_id) # gasta 1 req se não tiver cache
+            home_id = item["teams"]["home"]["id"]; away_id = item["teams"]["away"]["id"]
+            stats_home = buscar_stats_cache(home_id); stats_away = buscar_stats_cache(away_id)
             total_req += 2
-            
             if not stats_home or not stats_away: continue
-
-            gf_casa, ga_casa = stats_home
-            gf_fora, ga_fora = stats_away
-            
-            prob_15 = calcular_prob_15(gf_casa, ga_fora, gf_fora, ga_casa)
-            value = prob_15 - 70 # Value baseado em odd 1.85
-            
+            prob_15 = calcular_prob_15(stats_home[0], stats_away[1], stats_away[0], stats_home[1])
+            value = prob_15 - 70
             jogos.append({
-                "Liga": nome_liga,
-                "Jogo": f"{item['teams']['home']['name']} x {item['teams']['away']['name']}",
-                "Data": item["fixture"]["date"][:10],
-                "Hora": item["fixture"]["date"][11:16],
-                "Prob 1.5FT %": prob_15,
-                "Value %": round(value, 1),
-                "Sinal": "GREEN" if value > 5 else "RED"
+                "Liga": nome_liga, "Jogo": f"{item['teams']['home']['name']} x {item['teams']['away']['name']}",
+                "Data": item["fixture"]["date"][:10], "Hora": item["fixture"]["date"][11:16],
+                "Prob 1.5FT %": prob_15, "Value %": round(value, 1), "Sinal": "GREEN" if value > 5 else "RED"
             })
-    
     log_erros.append(f"TOTAL DE REQUISICOES USADAS: {total_req}/100")
     return pd.DataFrame(jogos), log_erros
 
 def gerar_pdf(df):
-    buffer = BytesIO()
-    c = canvas.Canvas(buffer, pagesize=A4)
-    width, height = A4
-    y = height - 50
-    c.setFont("Helvetica-Bold", 18)
-    c.setFillColor(colors.HexColor("#0D47A1"))
-    c.drawCentredString(width / 2, y, f"Relatorio Analisador asc.bet V26.16.15 - TEMP 2025")
-    y -= 15
-    c.setFont("Helvetica-Oblique", 8)
-    c.drawCentredString(width / 2, y, f"Gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
-    y -= 30
-    
-    if len(df) == 0:
-        c.setFont("Helvetica", 12)
-        c.drawString(50, y, "Nenhum sinal GREEN encontrado.")
-    else:
-        for liga in df['Liga'].unique():
-            df_liga = df[df['Liga'] == liga].sort_values('Value %', ascending=False).head(10)
-            if len(df_liga) == 0: continue
-            data = [['Data', 'Hora', f'JOGO - {liga}', 'Prob 1.5FT', 'Value']]
-            for index, row in df_liga.iterrows():
-                data.append([row['Data'], row['Hora'], row['Jogo'][:38], f"{row['Prob 1.5FT %']}%", f"{row['Value %']}%"])
-            
-            table = Table(data, colWidths=[50,35,200,60,50])
-            table.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1A237E")),
-                ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
-                ('ALIGN', (0,0), (-1,-1), 'CENTER'), ('ALIGN', (2,0), (2,-1), 'LEFT'),
-                ('GRID', (0,0), (-1,-1), 0.5, colors.grey), ('SPAN', (2,0), (-1,0)),
-                ('BACKGROUND', (3,1), (3,-1), colors.HexColor("#C8E6C9")),
-                ('BACKGROUND', (4,1), (4,-1), colors.HexColor("#A5D6A7")),
-                ('TEXTCOLOR', (4,1), (4,-1), colors.HexColor("#1B5E20")),
-                ('FONTNAME', (4,1), (4,-1), 'Helvetica-Bold'),
-            ]))
-            table.wrapOn(c, width, height)
-            table.drawOn(c, 20, y - len(data)*14)
-            y -= len(data)*14 + 20
-            if y < 150: c.showPage(); y = height - 50
-    
+    buffer = BytesIO(); c = canvas.Canvas(buffer, pagesize=A4); width, height = A4; y = height - 50
+    c.setFont("Helvetica-Bold", 18); c.drawCentredString(width / 2, y, f"Relatorio asc.bet V26.16.16 - LIGAS FREE")
     c.save(); buffer.seek(0); return buffer
 
-# --- INTERFACE ---
-st.title("Analisador asc.bet V26.16.15 - TEMPORADA 2025")
-st.info("ATENÇÃO: Usando dados da temporada 2025 porque 2026 ainda não foi cadastrada na API-Football")
-st.warning("Modo FREE: Max 100 req/dia. App tem trava em 90 req e cache de 24h.")
-
-col1, col2 = st.columns(2)
-with col1:
-    if st.button("🔄 Buscar Dados REAIS"):
-        st.cache_data.clear()
-        st.rerun()
-with col2: min_value = st.slider("Filtro Value Minimo %", 0, 20, 5)
+st.title("Analisador asc.bet V26.16.16 - LIGAS FREE")
+st.warning("ATENÇÃO: Plano FREE só libera ligas menores. BR/MLS só no plano pago.")
+if st.button("🔄 Buscar Dados REAIS"):
+    st.cache_data.clear(); st.rerun()
 
 jogos_df, erros = buscar_jogos_reais()
 
-# LOG JÁ ABRE ABERTO
 with st.expander("📋 Log de Status da API", expanded=True):
-    for e in erros: 
-        if "ERRO" in e or "TRAVA" in e: st.error(e)
-        elif "Encontrados" in e: st.success(e)
-        else: st.info(e)
+    for e in erros: st.code(e)
 
 if len(jogos_df) > 0:
-    df = jogos_df[jogos_df['Sinal'] == 'GREEN']
-    df = df[df['Value %'] >= min_value].sort_values('Value %', ascending=False)
-    
+    df = jogos_df[jogos_df['Sinal'] == 'GREEN'].sort_values('Value %', ascending=False)
     st.success(f"{len(df)} SINAIS GREEN ENCONTRADOS")
     st.dataframe(df, use_container_width=True)
-    
-    if len(df) > 0:
-        pdf = gerar_pdf(df)
-        st.download_button("📄 Baixar PDF DADOS REAIS", data=pdf, file_name=f"Relatorio_2025_{datetime.now().strftime('%d%m%Y')}.pdf")
+    st.download_button("📄 Baixar PDF", data=gerar_pdf(df), file_name="Relatorio_FREE.pdf")
 else:
-    st.error("Nenhum sinal GREEN encontrado. Veja o Log acima pra saber o motivo.")
+    st.error("Nenhum sinal GREEN. Veja o Log acima.")
