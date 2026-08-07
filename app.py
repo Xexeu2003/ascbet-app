@@ -9,7 +9,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.platypus import Table, TableStyle
 
-st.set_page_config(page_title="Analisador asc.bet THEODDS", layout="wide")
+st.set_page_config(page_title="Analisador asc.bet THEODDS PRO", layout="wide")
 
 ODDS_API_KEY = "7779b153071a617ec6767463223c2eb1"
 
@@ -36,20 +36,23 @@ def calcular_prob_15_por_liga(media_gols):
     lamb_total = media_gols
     p0 = poisson(0, lamb_total)
     p1 = poisson(1, lamb_total)
-    prob_15 = (1 - p0 - p1) * 100
-    return round(prob_15, 1)
+    return round((1 - p0 - p1) * 100, 1)
+
+def color_value(val):
+    return 'color: #00C853; font-weight: bold' if val > 0 else 'color: #D50000'
 
 @st.cache_data(ttl=1800, show_spinner="Buscando Odds REAIS da TheOdds...")
-def buscar_jogos_odds():
+def buscar_jogos_odds(ligas_selecionadas):
     jogos = []
     log_erros = []
     total_req = 0
 
-    for liga_id, nome_liga in LIGAS_ODDS.items():
+    for liga_id in ligas_selecionadas:
+        nome_liga = LIGAS_ODDS[liga_id]
         url = f"https://api.the-odds-api.com/v4/sports/{liga_id}/odds"
         params = {
             "apiKey": ODDS_API_KEY,
-            "regions": "us,uk,eu", # ADICIONEI MAIS REGIOES PRA TER MAIS ODDS
+            "regions": "us,uk,eu",
             "markets": "totals",
             "oddsFormat": "decimal",
             "dateFormat": "iso"
@@ -61,7 +64,7 @@ def buscar_jogos_odds():
             log_erros.append(f"{nome_liga}: ERRO 429 - Limite 500/mes atingido")
             break
         if r.status_code!= 200:
-            log_erros.append(f"{nome_liga}: ERRO {r.status_code} - {r.text[:50]}")
+            log_erros.append(f"{nome_liga}: ERRO {r.status_code}")
             continue
 
         lista_jogos = r.json()
@@ -74,66 +77,153 @@ def buscar_jogos_odds():
                 for market in book.get('markets', []):
                     if market['key'] == 'totals':
                         for outcome in market['outcomes']:
-                            # CORREÇÃO: CONVERTER POINT PRA FLOAT
                             if float(outcome['point']) == 1.5 and outcome['name'] == 'Over':
-                                odd_over_15 = outcome['price']
-                                prob_implicita = round((1 / odd_over_15) * 100, 1)
-                                value = prob_base - prob_implicita
-                                
+                                odd = outcome['price']
+                                prob_imp = round((1 / odd) * 100, 1)
+                                value = prob_base - prob_imp
                                 dt = datetime.fromisoformat(item['commence_time'].replace('Z',''))
                                 jogos.append({
                                     "Liga": nome_liga,
                                     "Jogo": f"{item['home_team']} x {item['away_team']}",
                                     "Data": dt.strftime("%d/%m"),
                                     "Hora": dt.strftime("%H:%M"),
-                                    "Casa": book['title'], # ADICIONEI CASA DE APOSTA
-                                    "Odd Over 1.5": odd_over_15,
-                                    "Prob Modelo %": prob_base,
-                                    "Prob Implicita %": prob_implicita,
+                                    "Casa": book['title'],
+                                    "Odd 1.5": odd,
+                                    "Prob Modelo": prob_base,
+                                    "Prob Casa": prob_imp,
                                     "Value %": round(value, 1),
                                     "Sinal": "GREEN" if value > 0 else "RED"
                                 })
-    
-    log_erros.append(f"TOTAL DE REQUISICOES USADAS: {total_req}/500")
+
+    log_erros.append(f"TOTAL REQUISICOES USADAS: {total_req}/500")
     return pd.DataFrame(jogos), log_erros
 
 def gerar_pdf(df):
-    buffer = BytesIO(); c = canvas.Canvas(buffer, pagesize=A4); width, height = A4; y = height - 50
-    c.setFont("Helvetica-Bold", 18); c.drawCentredString(width / 2, y, f"Relatorio asc.bet V26.16.19 - THEODDS")
+    buffer = BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+    y = height - 50
+
+    # CABEÇALHO
+    c.setFont("Helvetica-Bold", 20)
+    c.setFillColor(colors.HexColor("#0D47A1"))
+    c.drawCentredString(width / 2, y, f"RELATORIO ASC.BET V26.16.21")
+    y -= 20
+    c.setFont("Helvetica", 9)
+    c.setFillColor(colors.grey)
+    c.drawCentredString(width / 2, y, f"Gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')} | Fonte: TheOdds API | Over 1.5FT")
     y -= 30
-    for liga in df['Liga'].unique():
-        df_liga = df[df['Liga'] == liga].sort_values('Value %', ascending=False).head(15)
-        data = [['Data', 'Hora', f'JOGO - {liga}', 'Casa', 'Odd', 'Value']]
-        for index, row in df_liga.iterrows():
-            data.append([row['Data'], row['Hora'], row['Jogo'][:25], row['Casa'][:10], row['Odd Over 1.5'], f"{row['Value %']}%"])
-        table = Table(data, colWidths=[40,35,150,60,40,40])
-        table.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1A237E")), ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke), ('GRID', (0,0), (-1,-1), 0.5, colors.grey)]))
-        table.wrapOn(c, width, height); table.drawOn(c, 20, y - len(data)*14); y -= len(data)*14 + 20
-        if y < 150: c.showPage(); y = height - 50
-    c.save(); buffer.seek(0); return buffer
 
-st.title("Analisador asc.bet V26.16.19 - THEODDS API FREE")
-st.success("ATENÇÃO: BR A/B e MLS liberados. Limite 500 req/mes.")
+    if len(df) == 0:
+        c.setFont("Helvetica", 12)
+        c.drawString(50, y, "Nenhum sinal GREEN encontrado com o filtro atual.")
+    else:
+        # SEPARA POR LIGA
+        for liga in df['Liga'].unique():
+            df_liga = df[df['Liga'] == liga].sort_values('Value %', ascending=False)
 
-if st.button("🔄 Buscar Odds REAIS"):
-    st.cache_data.clear(); st.rerun()
+            # TITULO DA LIGA
+            c.setFont("Helvetica-Bold", 14)
+            c.setFillColor(colors.HexColor("#1A237E"))
+            c.drawString(30, y, f"{liga.upper()}")
+            y -= 5
+            c.line(30, y, width-30, y)
+            y -= 20
 
-jogos_df, erros = buscar_jogos_odds()
+            # AGRUPA POR DATA
+            for data_jogo in df_liga['Data'].unique():
+                df_data = df_liga[df_liga['Data'] == data_jogo]
 
-with st.expander("📋 Log de Status da API", expanded=True):
-    for e in erros: st.code(e)
+                c.setFont("Helvetica-BoldOblique", 10)
+                c.setFillColor(colors.HexColor("#424242"))
+                c.drawString(35, y, f"DATA: {data_jogo}")
+                y -= 15
+
+                # TABELA
+                data = [['Hora', 'JOGO', 'CASA', 'ODD', 'P.MOD', 'P.CASA', 'VALUE']]
+                for index, row in df_data.iterrows():
+                    data.append([
+                        row['Hora'], row['Jogo'][:28], row['Casa'][:9],
+                        row['Odd 1.5'], f"{row['Prob Modelo']}%",
+                        f"{row['Prob Casa']}%", f"{row['Value %']}%"
+                    ])
+
+                table = Table(data, colWidths=[35,155,60,35,40,40,40])
+                table.setStyle(TableStyle([
+                    ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#37474F")),
+                    ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
+                    ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+                    ('ALIGN', (1,1), (1,-1), 'LEFT'),
+                    ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+                    ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0,0), (-1,-1), 8),
+                    ('BACKGROUND', (-1,1), (-1,-1), colors.HexColor("#E8F5E9")),
+                ]))
+                table.wrapOn(c, width, height)
+                table.drawOn(c, 30, y - len(data)*14)
+                y -= len(data)*14 + 15
+
+                if y < 150:
+                    c.showPage()
+                    y = height - 50
+
+            y -= 10
+
+    c.save()
+    buffer.seek(0)
+    return buffer
+
+# --- INTERFACE ---
+st.title("Analisador asc.bet V26.16.21 - THEODDS PRO")
+st.success("DADOS 100% REAIS: Jogos, Datas, Odds e Casas. Limite 500 req/mes.")
+
+col1, col2, col3 = st.columns([2,1,1])
+with col1:
+    ligas_sel = st.multiselect(
+        "1. Escolher Ligas",
+        options=list(LIGAS_ODDS.values()),
+        default=["BRASILEIRÃO SÉRIE A", "BRASILEIRÃO SÉRIE B", "MLS - ESTADOS UNIDOS"]
+    )
+with col2:
+    min_value = st.slider("2. Filtro Value Minimo %", -20, 20, 0)
+with col3:
+    st.write("")
+    st.write("")
+    if st.button("🔄 BUSCAR DADOS REAIS", type="primary", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
+
+ligas_ids_sel = [k for k,v in LIGAS_ODDS.items() if v in ligas_sel]
+jogos_df, erros = buscar_jogos_odds(ligas_ids_sel)
+
+with st.expander("📋 Log de Status da API", expanded=False):
+    for e in erros:
+        if "ERRO" in e: st.error(e)
+        else: st.info(e)
 
 if len(jogos_df) > 0:
-    min_value = st.slider("Filtro Value Minimo %", -20, 20, -5) # COMEÇA EM -5 PRA MOSTRAR TUDO
-    
     df = jogos_df[jogos_df['Value %'] >= min_value].sort_values('Value %', ascending=False)
-    
     qtd_green = len(df[df['Sinal']=='GREEN'])
-    st.success(f"{len(df)} JOGOS ENCONTRADOS | {qtd_green} SINAIS GREEN")
-    st.dataframe(df, use_container_width=True)
-    
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total de Jogos", len(df))
+    col2.metric("Sinais GREEN", qtd_green, delta=f"{qtd_green} oportunidades")
+    col3.metric("Creditos Usados", f"{erros[-1].split(':')[1].strip()}")
+
+    st.dataframe(
+        df.style.applymap(color_value, subset=['Value %']),
+        use_container_width=True,
+        height=500
+    )
+
     if qtd_green > 0:
         pdf = gerar_pdf(df[df['Sinal']=='GREEN'])
-        st.download_button("📄 Baixar PDF SINAIS GREEN", data=pdf, file_name=f"Relatorio_GREEN_{datetime.now().strftime('%d%m%Y')}.pdf")
+        st.download_button(
+            "📄 BAIXAR PDF SINAIS GREEN",
+            data=pdf,
+            file_name=f"GREEN_{datetime.now().strftime('%d%m%Y_%H%M')}.pdf",
+            type="primary",
+            use_container_width=True
+        )
 else:
-    st.error("Nenhum jogo encontrado. Veja o Log acima.")
+    st.warning("Clique em 'BUSCAR DADOS REAIS' para começar.")
